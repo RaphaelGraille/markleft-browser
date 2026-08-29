@@ -1,0 +1,4 @@
+# Only needed for the standalone desktop app, not for running server.py
+# directly in a browser -- that only needs flask.
+pywebview      # to run desktop.py
+pyinstaller    # to build the .app bundle (build.sh) -- not needed just to run desktop.py

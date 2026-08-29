@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown Viewer</title>
+<link rel="stylesheet" href="/static/vendor/github-markdown.min.css">
+<link rel="stylesheet" id="hljs-theme" href="/static/vendor/highlight-github.min.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="app">
+  <nav id="sidebar">
+    <div id="sidebar-header">
+      <div id="sidebar-title">
+        <button id="root-picker-btn" type="button" title="Change root folder">
+          <span id="root-picker-icon"></span>
+          <span id="repo-name"></span>
+        </button>
+        <div id="sidebar-title-right">
+          <span id="file-count"></span>
+          <button id="new-window-btn" type="button" title="Open a new window">
+            <span id="new-window-icon"></span>
+          </button>
+        </div>
+      </div>
+      <div id="filter-wrapper">
+        <input id="filter-box" type="text" placeholder="Filter files…" autocomplete="off">
+        <button id="filter-clear-btn" type="button" title="Clear filter" aria-label="Clear filter">&times;</button>
+      </div>
+      <div id="tree-actions">
+        <button id="expand-all-btn" type="button">Expand all</button>
+        <button id="collapse-all-btn" type="button">Collapse all</button>
+      </div>
+    </div>
+    <div id="tree"></div>
+  </nav>
+  <div id="sidebar-resizer">
+    <button id="sidebar-collapse-btn" type="button" title="Collapse sidebar">
+      <span id="sidebar-collapse-icon"></span>
+    </button>
+  </div>
+  <main id="content">
+    <div id="tabbar"></div>
+    <div id="panes"></div>
+  </main>
+</div>
+
+<div id="modal-overlay" class="modal-overlay hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h2 id="modal-title"></h2>
+    <div id="modal-body"></div>
+    <div class="modal-actions">
+      <button id="modal-cancel-btn" type="button">Cancel</button>
+      <button id="modal-confirm-btn" type="button">Proceed</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
