@@ -1,5 +1,7 @@
 # Markdown Viewer
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Local, read-only markdown viewer: a file-tree side panel to navigate a
 folder's `.md` files, multiple tabs (VS Code-style preview/pin), full
 keyboard navigation, GitHub-style rendering with syntax-highlighted code
