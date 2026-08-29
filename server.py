@@ -176,24 +176,9 @@ def _reconcile_root_switch(new_root: Path, open_paths: list[str]) -> dict:
 NATIVE_PICKER_TIMEOUT_S = 90
 
 
-@app.post("/api/pick-root-native")
-def api_pick_root_native():
-    """macOS only: open a native folder dialog via osascript. Returns
-    {"supported": false} immediately on any other platform, so the frontend
-    can skip straight to manual path entry without wasting a round trip.
-
-    Runs in an isolated subprocess with a hard timeout -- deliberately, not
-    in-process. An earlier tkinter-based attempt at this hung outright and
-    wedged the whole (at the time single-threaded) dev server; a subprocess
-    bounds the blast radius (the child gets killed at the timeout) and the
-    server also now runs threaded, so even a stuck request here can't block
-    anything else. Any failure -- timeout, osascript missing, anything other
-    than a clean cancel -- is reported as a plain error; the caller falls
-    back to manual entry rather than treating this as fatal.
-    """
-    if sys.platform != "darwin":
-        return jsonify({"supported": False})
-
+def _pick_root_native_macos() -> dict:
+    """Open a native folder dialog via osascript (bundled with every macOS
+    install, no extra dependency)."""
     try:
         result = subprocess.run(
             [
@@ -216,13 +201,74 @@ def api_pick_root_native():
         # (userCanceledErr) -- locale-independent, unlike matching the
         # English "User canceled." wording.
         if "-128" in result.stderr:
-            return jsonify({"supported": True, "cancelled": True})
+            return {"supported": True, "cancelled": True}
         abort(500, f"native picker failed: {result.stderr.strip()}")
 
     chosen = result.stdout.strip()
     if not chosen or not Path(chosen).is_dir():
         abort(500, "selected path is not a directory")
-    return jsonify({"supported": True, "root": chosen})
+    return {"supported": True, "root": chosen}
+
+
+def _pick_root_native_windows() -> dict:
+    """Open a native folder dialog via a WinForms FolderBrowserDialog,
+    driven through powershell.exe (bundled with every Windows install, no
+    extra dependency -- same "isolated subprocess, no new GUI toolkit in
+    our own process" shape as the macOS osascript path above). -STA (single
+    threaded apartment) is required for WinForms/COM dialogs to work at all
+    from a script host."""
+    script = (
+        "Add-Type -AssemblyName System.Windows.Forms;"
+        "$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
+        "$d.Description = 'Select the folder to browse';"
+        "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) "
+        "{ Write-Output $d.SelectedPath } else { Write-Output 'CANCELLED' }"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-STA", "-Command", script],
+            capture_output=True, text=True, timeout=NATIVE_PICKER_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        abort(500, f"native picker timed out after {NATIVE_PICKER_TIMEOUT_S}s")
+    except FileNotFoundError:
+        abort(500, "powershell is not available on this system")
+
+    if result.returncode != 0:
+        abort(500, f"native picker failed: {result.stderr.strip()}")
+
+    chosen = result.stdout.strip()
+    if chosen == "CANCELLED":
+        # A sentinel we chose ourselves, not a parsed English button label --
+        # locale-independent the same way macOS's -128 check above is.
+        return {"supported": True, "cancelled": True}
+    if not chosen or not Path(chosen).is_dir():
+        abort(500, "selected path is not a directory")
+    return {"supported": True, "root": chosen}
+
+
+@app.post("/api/pick-root-native")
+def api_pick_root_native():
+    """macOS and Windows: open a native folder dialog. Returns
+    {"supported": false} immediately on any other platform (Linux), so the
+    frontend can skip straight to manual path entry without wasting a round
+    trip.
+
+    Each platform's dialog runs in an isolated subprocess with a hard
+    timeout -- deliberately, not in-process. An earlier tkinter-based
+    attempt at this hung outright and wedged the whole (at the time
+    single-threaded) dev server; a subprocess bounds the blast radius (the
+    child gets killed at the timeout) and the server also now runs
+    threaded, so even a stuck request here can't block anything else. Any
+    failure -- timeout, dialog tool missing, anything other than a clean
+    cancel -- is reported as a plain error; the caller falls back to manual
+    entry rather than treating this as fatal.
+    """
+    if sys.platform == "darwin":
+        return jsonify(_pick_root_native_macos())
+    if sys.platform == "win32":
+        return jsonify(_pick_root_native_windows())
+    return jsonify({"supported": False})
 
 
 @app.post("/api/pick-root")

@@ -800,15 +800,16 @@ function showModal({ title, bodyHtml, confirmLabel = "Proceed", cancelLabel = "C
 // ---------- root switching ----------
 //
 // Manual path entry is the reliable baseline on every OS -- it's the one
-// mechanism that has never failed across everything tried. On macOS only,
-// clicking the button first tries a native folder dialog (via osascript,
-// isolated in its own subprocess with a hard server-side timeout, since an
-// earlier tkinter-based attempt hung and wedged the whole server -- that
-// must never be able to happen again regardless of what the dialog does).
-// The server reports {supported:false} immediately on non-macOS, and ANY
-// failure of the native attempt (not just "unsupported") falls through to
-// the manual flow -- a real folder switch is always still one path-paste
-// away even if the native picker breaks again.
+// mechanism that has never failed across everything tried. On macOS and
+// Windows, clicking the button first tries a native folder dialog (osascript on
+// macOS, a PowerShell FolderBrowserDialog on Windows -- each isolated in
+// its own subprocess with a hard server-side timeout, since an earlier
+// tkinter-based attempt hung and wedged the whole server -- that must
+// never be able to happen again regardless of what the dialog does).
+// The server reports {supported:false} immediately on Linux (no native
+// dialog wired up there), and ANY failure of the native attempt (not just
+// "unsupported") falls through to the manual flow -- a real folder switch
+// is always still one path-paste away even if the native picker breaks.
 
 const RECENT_ROOTS_KEY = "mdviewer:recentRoots";
 const MAX_RECENT_ROOTS = 8;
