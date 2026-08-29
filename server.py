@@ -11,6 +11,7 @@ Usage:
 import argparse
 import json
 import mimetypes
+import os
 import socket
 import subprocess
 import sys
@@ -20,13 +21,23 @@ from pathlib import Path
 
 from flask import Flask, jsonify, send_from_directory, abort, request, send_file
 
+
+def _per_user_state_dir() -> Path:
+    """The OS's standard per-user app-data location, one per platform."""
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "MarkLeft Browser"
+    if sys.platform == "win32":
+        return Path(os.environ["APPDATA"]) / "MarkLeft Browser"
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "MarkLeft Browser"
+
+
 if getattr(sys, "frozen", False):
     # Running inside a PyInstaller bundle: __file__-relative paths don't
     # point at the bundled resources -- sys._MEIPASS does. State also can't
     # live next to the (effectively read-only, reinstallable) app bundle;
-    # it belongs in the OS's standard per-user app-support location.
+    # it belongs in the OS's standard per-user app-data location.
     TOOL_DIR = Path(sys._MEIPASS)
-    STATE_DIR = Path.home() / "Library" / "Application Support" / "MarkLeft Browser"
+    STATE_DIR = _per_user_state_dir()
     STATE_DIR.mkdir(parents=True, exist_ok=True)
 else:
     TOOL_DIR = Path(__file__).resolve().parent

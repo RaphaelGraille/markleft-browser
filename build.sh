@@ -1,5 +1,7 @@
 #!/bin/bash
-# Builds MarkLeft Browser.app via PyInstaller.
+# Builds the MarkLeft Browser desktop app via PyInstaller. Produces a
+# platform-native package for whichever OS this runs on -- see desktop.spec
+# for the exact per-OS output (macOS .app / Windows .exe / Linux binary).
 #
 # Activate the venv that has requirements-desktop.txt installed first (see
 # README.md) -- this just calls `pyinstaller` from whatever's on PATH.
@@ -9,4 +11,4 @@ cd "$(dirname "$0")"
 pyinstaller desktop.spec --noconfirm
 
 echo
-echo "Built: dist/MarkLeft Browser.app"
+echo "Built: dist/MarkLeft Browser (see dist/ for the exact file for this OS)"

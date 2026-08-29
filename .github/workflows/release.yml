@@ -1,0 +1,93 @@
+name: Build and release
+
+# Fires only on a version tag (e.g. v1.0.0), never on plain commits/PRs --
+# tagging is the deliberate "cut a release" action.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+# The default GITHUB_TOKEN can create releases and upload assets, but only
+# once we explicitly grant it write access here -- it's read-only by default.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false # one OS failing shouldn't cancel the other builds
+      matrix:
+        include:
+          - os: macos-latest
+            asset_name: MarkLeft-Browser-macOS.zip
+          - os: windows-latest
+            asset_name: MarkLeft-Browser-Windows.zip
+          - os: ubuntu-latest
+            asset_name: MarkLeft-Browser-Linux.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Only Linux needs this: pywebview's GTK/WebKit backend depends on
+      # system libraries that pip can't install -- Windows and macOS ship
+      # (or pip-install) everything pywebview needs on their own.
+      - name: Install Linux GTK/WebKit system libraries
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgirepository1.0-dev gcc libcairo2-dev pkg-config python3-dev \
+            gir1.2-gtk-3.0 libgtk-3-dev gir1.2-webkit2-4.1 libwebkit2gtk-4.1-dev
+
+      - name: Install Python dependencies
+        run: |
+          pip install flask
+          pip install -r requirements-desktop.txt
+        shell: bash
+
+      - name: Install Linux PyGObject/pycairo bindings
+        if: matrix.os == 'ubuntu-latest'
+        run: pip install pygobject pycairo
+
+      - name: Build with PyInstaller
+        run: pyinstaller desktop.spec --noconfirm
+
+      - name: Package macOS build (.app -> .zip)
+        if: matrix.os == 'macos-latest'
+        shell: bash
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/MarkLeft Browser.app" "${{ matrix.asset_name }}"
+
+      - name: Package Windows build (.exe -> .zip)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: Compress-Archive -Path "dist/MarkLeft Browser.exe" -DestinationPath "${{ matrix.asset_name }}"
+
+      - name: Package Linux build (binary -> .zip)
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          chmod +x "dist/MarkLeft Browser"
+          zip -j "${{ matrix.asset_name }}" "dist/MarkLeft Browser"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release with all three builds attached
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*.zip
+          generate_release_notes: true
