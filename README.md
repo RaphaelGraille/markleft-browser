@@ -2,29 +2,108 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Local, read-only markdown viewer: a file-tree side panel to navigate a
-folder's `.md` files, multiple tabs (VS Code-style preview/pin), full
-keyboard navigation, GitHub-style rendering with syntax-highlighted code
-blocks (parsed off the main thread, so it never blocks on a big file), and a
-runtime folder switcher so you're not locked to one root. No editing. No
-network calls at runtime — all JS/CSS assets are vendored under
-`static/vendor/`.
+A local, read-only markdown viewer: point it at any folder and browse its
+`.md` files in a file-tree side panel with tabs, GitHub-style rendering,
+and full keyboard navigation. No editing, no accounts, no network calls at
+runtime — everything (including syntax highlighting) is bundled and runs
+entirely on your machine. Ships as a real double-clickable desktop app for
+macOS, Windows, and Linux, or you can run it from source in a browser tab.
 
-## Setup
+## Features
 
-Assumes you already have this `md_viewer/` folder (copy it next to your
-local checkout of whatever repo you want to browse, or anywhere else — the
-folder to browse is picked at runtime, see Usage below). The only real
-dependency is Flask, pure Python, identical on every OS.
+- **File tree** of a folder's `.md` files, with a filter box (fuzzy-matches
+  by path) and Expand All / Collapse All buttons.
+- **Sort** the tree by name, date modified, date created, or size, either
+  direction, via the dropdown above the tree — folders always stay grouped
+  before files regardless of criterion. The choice is global and persists
+  across restarts. (On Linux, "date created" sorts by modification time
+  instead, since most Linux filesystems don't expose a real creation
+  timestamp.)
+- **Tabs**, VS Code-style: clicking a file opens it as a *preview* tab
+  (italic, replaced by the next file you click); double-click a file, or
+  click a tab's pin icon, to keep it open permanently. Drag tabs to
+  reorder them (the rightmost preview tab is anchored and can't be
+  dragged onto). Open tabs and their order persist across restarts,
+  namespaced per folder.
+- **GitHub-style markdown rendering** with syntax-highlighted code blocks,
+  parsed off the main thread so a large file never blocks the UI.
+  Relative links between `.md` files open as a new tab in the viewer;
+  other relative links (images, PDFs, etc.) are served read-only and open
+  in a new browser tab.
+- **Text is selectable** — select and copy/paste out of any rendered file,
+  in the browser or the desktop app.
+- **Auto-refresh**: the tree and any open tab pick up external changes —
+  edited, added, removed, or renamed files — within about a second, with
+  no manual reload. Paused while the window/tab isn't visible. A file that
+  disappears out from under an open tab shows an error there instead of
+  stale content, and recovers automatically if it reappears.
+- **Switch folders at runtime** by clicking the folder name at the top of
+  the sidebar — a native folder-picker dialog on macOS and Windows, or a
+  manual path entry (with one-click recent folders) everywhere else or if
+  the native dialog fails. It warns you, with the exact file list, if
+  switching would close any currently-open tabs. Your choice persists
+  across restarts.
+- **Resizable, collapsible sidebar**: drag the thin divider on its right
+  edge to resize, or click the collapse button to hide it entirely (both
+  persist across restarts).
+- **New Window** (the small window icon next to the file count) opens a
+  fully independent second window on its own port, so two windows can
+  browse different folders — or the same one — without affecting each
+  other.
 
-Pick the path that matches you.
+### Keyboard shortcuts
 
-### Path A — You already have `ray` set up
+Tree navigation works everywhere (browser tab or desktop app):
 
-Nothing to install — `ray`'s own `venv` already has Python and Flask. Skip
-straight to Usage below, using `../ray/venv/bin/python3 server.py`.
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Move the sidebar cursor, previewing the file it lands on |
+| `→` / `←` | Expand / collapse the folder under the cursor |
+| `Enter` | Pin the file under the cursor as a permanent tab |
+| `Esc` | Close an open dialog |
 
-### Path B — Setting up from scratch (no `ray` repo)
+These only work in the **desktop app** (never bound in a browser tab,
+since browsers reserve some of these themselves):
+
+| Shortcut | Action |
+|---|---|
+| `Cmd+N` | Open a new window |
+| `Cmd+W` | Close the active tab |
+| `Cmd+B` | Show/hide the sidebar |
+| `Cmd+←` / `Cmd+→` | Switch to the previous / next tab |
+
+## Installation
+
+### Download the app (recommended)
+
+Grab the latest build for your OS from
+**[Releases](../../releases/latest)** — no Python, no setup, just the one
+file:
+
+- **macOS**: unzip, then double-click `MarkLeft Browser.app`. First launch
+  trips Gatekeeper ("Apple could not verify this app is free of
+  malware") since it isn't code-signed — right-click → Open once to
+  approve it; macOS won't ask again.
+- **Windows**: unzip, then double-click `MarkLeft Browser.exe`. First
+  launch trips SmartScreen ("Windows protected your PC") for the same
+  reason — click "More info" → "Run anyway".
+- **Linux**: unzip, `chmod +x` the binary if it lost its executable bit in
+  transit, then run it.
+
+None of these are code-signed (that needs a paid developer account per
+platform, not done here) — the warnings above are expected and one-time.
+
+The app always starts with no folder selected; use the folder button to
+pick one, and it's remembered for next time in the OS's standard per-user
+app-data location: `~/Library/Application Support/MarkLeft Browser/`
+(macOS), `%APPDATA%\MarkLeft Browser\` (Windows), or
+`~/.local/share/MarkLeft Browser/` (Linux).
+
+### Run from source
+
+For browsing in a regular browser tab instead of the desktop app, or to
+modify the code yourself. The only real dependency is Flask, pure Python,
+identical on every OS.
 
 1. **Install Python 3.9+**, if you don't already have it:
    - macOS: `brew install python@3.11`, or the
@@ -41,116 +120,41 @@ straight to Usage below, using `../ray/venv/bin/python3 server.py`.
    pip install flask
    ```
 
-Then run it (see Usage below), using `venv/bin/python3 server.py`.
+3. **Run it:**
+   ```
+   venv/bin/python3 server.py      # Windows: venv\Scripts\python server.py
+   ```
+   Opens your browser at `http://127.0.0.1:8420/` automatically, with no
+   folder selected — use the folder button to pick one. Flags:
+   - `--repo <path>` — folder to browse at startup (default: last folder
+     switched to in-app)
+   - `--port <n>` — default `8420`
+   - `--no-browser` — don't auto-open a browser tab
 
-## Usage
+## Building the desktop app from source
 
-```
-venv/bin/python3 server.py          # Path A: ../ray/venv/bin/python3 server.py
-```
-(Windows: `venv\Scripts\python server.py`)
-
-Opens your browser at `http://127.0.0.1:8420/` automatically, browsing
-`../ray` by default. Flags:
-
-- `--repo <path>` — folder to browse at startup (default: last folder
-  switched to in-app, or `../ray` if you've never switched)
-- `--port <n>` — default `8420`
-- `--no-browser` — don't auto-open a browser tab
-
-Click the folder name at the top of the sidebar to switch to a different
-root folder at any time — enter an absolute path (previously-used folders
-show as one-click suggestions below the input), and it warns you, with the
-exact file list, if switching would close any currently-open tabs. Your
-choice persists across restarts.
-
-## Standalone desktop app (macOS, Windows, Linux)
-
-Everything above runs in your regular browser. There's also a real
-double-clickable app — same code, no browser tab, its own window and icon.
-**If you just want the app, grab the latest build for your OS from
-[Releases](../../releases/latest) instead of building it yourself** — the
-rest of this section is only for building it from source.
-
-**Run the dev version** (still needs a terminal, but shows the native window
-instead of opening a browser tab):
 ```
 pip install -r requirements-desktop.txt   # one-time, adds pywebview + pyinstaller
-venv/bin/python3 desktop.py               # Path A: ../ray/venv/bin/python3 desktop.py
+venv/bin/python3 desktop.py               # dev version: native window, still needs a terminal
+./build.sh                                # produces the real double-clickable package in dist/
 ```
-Unlike `server.py`, this always starts with no folder selected — there's no
-`../ray` sibling-folder assumption to fall back on once this is a real
-standalone app, so it just prompts you to pick one via the same button as
-always. On Linux, pywebview's GTK backend needs system packages pip can't
-install — see the `apt-get install` line in
+`./build.sh` produces `dist/MarkLeft Browser.app` (macOS),
+`dist/MarkLeft Browser.exe` (Windows), or `dist/MarkLeft Browser` (Linux),
+depending on which OS you run it on — see `desktop.spec` for the per-OS
+branching. On Linux, pywebview's GTK backend needs system packages pip
+can't install — see the `apt-get install` line in
 `.github/workflows/release.yml` for the exact list.
 
-**Build the actual app package (for your own OS):**
-```
-./build.sh
-```
-Produces, depending on the OS you run it on: `dist/MarkLeft Browser.app`
-(macOS), `dist/MarkLeft Browser.exe` (Windows), or `dist/MarkLeft Browser`
-(Linux) — see `desktop.spec` for the per-OS branching. That single file is
-the whole deliverable — double-click it (no terminal, no Python needed on
-the machine running it, everything's bundled inside). `dist/` and `build/`
-are regenerated by `./build.sh` each time and aren't the thing to share;
-whichever file lands in `dist/` is.
+## Releasing
 
-First launch on any machine will trip the OS's unsigned-app warning, since
-none of these are code-signed (that needs a paid developer account per
-platform, not done here): macOS says "Apple could not verify this app is
-free of malware" — right-click → Open once to approve it, and macOS won't
-ask again. Windows SmartScreen says "Windows protected your PC" — click
-"More info" → "Run anyway". Linux has no equivalent prompt, but the binary
-needs its executable bit set (`chmod +x`) if it lost it in transit.
+Pushing a version tag (`git tag v1.0.0 && git push origin v1.0.0`)
+triggers `.github/workflows/release.yml`: it builds the desktop app on
+all three OSes in parallel via GitHub Actions, zips each one, and
+publishes a single GitHub Release with all three attached. Nothing to run
+by hand — tagging is the entire release process. GitHub Actions is free
+and unlimited for this (standard runners on a public repo cost nothing,
+on any OS).
 
-The app's remembered root folder lives in the OS's standard per-user
-app-data location (not inside the app package itself, which is effectively
-read-only/reinstallable): `~/Library/Application Support/MarkLeft Browser/`
-on macOS, `%APPDATA%\MarkLeft Browser\` on Windows, `~/.local/share/MarkLeft
-Browser/` on Linux.
+## License
 
-## Releases
-
-Pushing a version tag (`git tag v1.0.0 && git push origin v1.0.0`) triggers
-`.github/workflows/release.yml`: it builds the desktop app on all three
-OSes in parallel via GitHub Actions, zips each one, and publishes a single
-GitHub Release with all three attached. Nothing to run by hand — tagging is
-the entire release process. GitHub Actions is free and unlimited for this
-(standard runners on a public repo cost nothing, on any OS).
-
-## Notes
-
-- **Navigating**: click a file to open it as a preview tab (replaces the
-  previous preview); double-click, or click a tab's pin icon, to keep it
-  open permanently. Arrow keys move the sidebar cursor and preview the file
-  it lands on; Left/Right expand/collapse a folder; Enter pins the file
-  under the cursor.
-- Filter box at the top of the sidebar fuzzy-filters the file tree by path
-  (the × clears it). Expand All / Collapse All buttons act on the whole tree.
-- Sort dropdown reorders the tree by name, date modified, date created, or
-  size, either direction — folders always stay grouped before files
-  regardless of criterion. On Linux, "date created" sorts by modification
-  time instead, since most Linux filesystems don't expose a real creation
-  timestamp. The choice is global (not per-folder) and persists across
-  restarts.
-- Drag tabs to reorder them (the always-rightmost preview tab is anchored
-  and can't be dragged/dropped onto).
-- Drag the thin divider on the sidebar's right edge to resize it; the width
-  persists across restarts.
-- The small window icon next to the file count opens a new window — a fully
-  independent process on its own port, so two windows can browse different
-  folders (or the same one) without affecting each other. Only the original
-  window's state survives an app restart; a second window starts fresh each
-  time, since it's on a different port each launch.
-- Relative links between `.md` files open as a new tab in the viewer.
-  Other relative links (images, PDFs, etc.) are served read-only and open
-  in a new browser tab.
-- The tree and any open tab auto-refresh (about once a second, paused while
-  the window/tab isn't visible) if the underlying files change on disk —
-  edited elsewhere, added, removed, or renamed — with no manual reload
-  needed. A file that disappears out from under an open tab shows an error
-  there instead of stale content, and recovers automatically if it reappears.
-- Open tabs and sidebar collapse state persist across restarts via the
-  browser's localStorage, namespaced per root folder.
+MIT — see [LICENSE](LICENSE).
