@@ -2,6 +2,10 @@
 
 const STORAGE_KEY = "mdviewer:state:v2";
 const COLLAPSE_KEY_PREFIX = "mdviewer:collapsed:";
+// Global, not per-root like collapse-state/open-tabs above -- how you like
+// files ordered is a preference about you, not about any one folder.
+const SORT_KEY = "mdviewer:sortBy";
+const DEFAULT_SORT = "name-asc";
 
 const ICON_FOLDER = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M1.5 3.5h4l1.2 1.5H14a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5H1.5a.5.5 0 0 1-.5-.5v-8.5a.5.5 0 0 1 .5-.5z"/></svg>`;
 const ICON_FOLDER_OPEN = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M1.5 4.3V3a.5.5 0 0 1 .5-.5h3.2l1.2 1.3H13a.5.5 0 0 1 .5.5v1"/><path d="M1.2 4.8h12.6a.5.5 0 0 1 .49.6l-1 6a.5.5 0 0 1-.49.4H2.2a.5.5 0 0 1-.49-.4l-1-6a.5.5 0 0 1 .49-.6z"/></svg>`;
@@ -433,9 +437,56 @@ function renderEmptyStateIfNeeded() {
 const treeEl = document.getElementById("tree");
 const filterBox = document.getElementById("filter-box");
 
+// ---------- sorting ----------
+//
+// Sorting is a pure presentation concern, applied fresh at every render --
+// never by mutating treeData's own children arrays in place. treeData
+// stays exactly what /api/tree returned (name-ascending, folders-first,
+// the same canonical order as always) so the auto-refresh poll's
+// change-detection (a straight JSON comparison against the last fetch,
+// see loadTreeAndHeader) keeps comparing like with like regardless of
+// whatever the user has currently chosen to sort by.
+
+const sortSelect = document.getElementById("sort-select");
+
+function getSortPref() {
+  return localStorage.getItem(SORT_KEY) || DEFAULT_SORT;
+}
+
+function compareBySortField(a, b, field) {
+  if (field === "name") return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+  if (field === "size") {
+    // Folders carry no size (nothing recursively summed) -- among
+    // themselves they fall back to name rather than an arbitrary tie.
+    if (a.size == null && b.size == null) return compareBySortField(a, b, "name");
+    return (a.size ?? 0) - (b.size ?? 0);
+  }
+  return a[field] - b[field]; // "mtime" or "ctime"
+}
+
+// Folders are always grouped before files regardless of sort field (only
+// the order *within* each group changes) -- the standard convention every
+// mainstream file browser (Finder, VS Code, Explorer) already uses, so a
+// date/size sort never scatters folders in among files.
+function sortChildren(children) {
+  const [field, dir] = getSortPref().split("-"); // e.g. "modified-desc" -> ["modified", "desc"]
+  const sortField = { name: "name", modified: "mtime", created: "ctime", size: "size" }[field];
+  const sign = dir === "desc" ? -1 : 1;
+  const dirs = children.filter((c) => c.type === "dir");
+  const files = children.filter((c) => c.type === "file");
+  const cmp = (a, b) => sign * compareBySortField(a, b, sortField);
+  return [...dirs.sort(cmp), ...files.sort(cmp)];
+}
+
+sortSelect.value = getSortPref();
+sortSelect.addEventListener("change", () => {
+  localStorage.setItem(SORT_KEY, sortSelect.value);
+  renderTree();
+});
+
 function buildTreeDOM(node, isFiltering, tempExpanded) {
   const frag = document.createDocumentFragment();
-  node.children.forEach((child) => {
+  sortChildren(node.children).forEach((child) => {
     if (child.type === "dir") {
       const wrapper = document.createElement("div");
       wrapper.className = "tree-dir";

@@ -27,6 +27,16 @@
         <input id="filter-box" type="text" placeholder="Filter files…" autocomplete="off">
         <button id="filter-clear-btn" type="button" title="Clear filter" aria-label="Clear filter">&times;</button>
       </div>
+      <select id="sort-select" title="Sort files and folders by">
+        <option value="name-asc">Name (A → Z)</option>
+        <option value="name-desc">Name (Z → A)</option>
+        <option value="modified-desc">Date modified (newest first)</option>
+        <option value="modified-asc">Date modified (oldest first)</option>
+        <option value="created-desc">Date created (newest first)</option>
+        <option value="created-asc">Date created (oldest first)</option>
+        <option value="size-desc">Size (largest first)</option>
+        <option value="size-asc">Size (smallest first)</option>
+      </select>
       <div id="tree-actions">
         <button id="expand-all-btn" type="button">Expand all</button>
         <button id="collapse-all-btn" type="button">Collapse all</button>

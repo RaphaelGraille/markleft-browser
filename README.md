@@ -129,6 +129,12 @@ the entire release process. GitHub Actions is free and unlimited for this
   under the cursor.
 - Filter box at the top of the sidebar fuzzy-filters the file tree by path
   (the × clears it). Expand All / Collapse All buttons act on the whole tree.
+- Sort dropdown reorders the tree by name, date modified, date created, or
+  size, either direction — folders always stay grouped before files
+  regardless of criterion. On Linux, "date created" sorts by modification
+  time instead, since most Linux filesystems don't expose a real creation
+  timestamp. The choice is global (not per-folder) and persists across
+  restarts.
 - Drag tabs to reorder them (the always-rightmost preview tab is anchored
   and can't be dragged/dropped onto).
 - Drag the thin divider on the sidebar's right edge to resize it; the width

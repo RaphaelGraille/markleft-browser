@@ -81,6 +81,20 @@ def _save_last_root(root: Path) -> None:
     STATE_FILE.write_text(json.dumps({"last_root": str(root)}))
 
 
+def _creation_time(stat_result: os.stat_result) -> float:
+    """Best-effort file creation time. macOS and Windows both expose a real
+    one (st_birthtime, and st_ctime which -- uniquely on Windows -- means
+    creation time, not metadata-change time); most Linux filesystems don't
+    surface one at all through stat(), so creation-date sort there silently
+    falls back to modification time instead (an explicit product decision,
+    not a workaround -- there is no real creation time to report)."""
+    if sys.platform == "darwin":
+        return stat_result.st_birthtime
+    if sys.platform == "win32":
+        return stat_result.st_ctime
+    return stat_result.st_mtime
+
+
 def _build_tree(root: Path, repo_root: Path) -> dict:
     """Recursively build a JSON-serializable tree of directories containing .md files."""
     children = []
@@ -90,12 +104,19 @@ def _build_tree(root: Path, repo_root: Path) -> dict:
         if entry.is_dir():
             subtree = _build_tree(entry, repo_root)
             if subtree["children"]:
+                stat = entry.stat()
+                subtree["mtime"] = stat.st_mtime
+                subtree["ctime"] = _creation_time(stat)
                 children.append(subtree)
         elif entry.suffix.lower() == ".md":
+            stat = entry.stat()
             children.append({
                 "type": "file",
                 "name": entry.name,
                 "path": str(entry.relative_to(repo_root)),
+                "mtime": stat.st_mtime,
+                "ctime": _creation_time(stat),
+                "size": stat.st_size,
             })
     return {
         "type": "dir",
