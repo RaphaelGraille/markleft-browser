@@ -20,6 +20,7 @@ import webbrowser
 from pathlib import Path
 
 from flask import Flask, jsonify, send_from_directory, abort, request, send_file
+from werkzeug.exceptions import HTTPException
 
 
 def _per_user_state_dir() -> Path:
@@ -153,6 +154,28 @@ def api_asset():
     resolved = _resolve_within_repo(rel_path)
     mime, _ = mimetypes.guess_type(str(resolved))
     return send_file(resolved, mimetype=mime or "application/octet-stream")
+
+
+@app.get("/api/mtimes")
+def api_mtimes():
+    """Batched last-modified-time check for the frontend's auto-refresh
+    poll: given the currently open tabs' repo-relative paths, returns each
+    one's mtime in a single round trip (instead of one request per tab).
+
+    A path that no longer resolves (deleted, renamed, or the root switched
+    away underneath it) is simply omitted from the result -- the frontend
+    reads that absence as "this tab's file is gone" and reacts accordingly,
+    rather than one bad path aborting the whole batch.
+    """
+    paths = [p for p in request.args.get("paths", "").split(",") if p]
+    mtimes = {}
+    for rel in paths:
+        try:
+            resolved = _resolve_within_repo(rel)
+        except HTTPException:
+            continue
+        mtimes[rel] = resolved.stat().st_mtime
+    return jsonify({"mtimes": mtimes})
 
 
 def _reconcile_root_switch(new_root: Path, open_paths: list[str]) -> dict:

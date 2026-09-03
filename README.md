@@ -141,5 +141,10 @@ the entire release process. GitHub Actions is free and unlimited for this
 - Relative links between `.md` files open as a new tab in the viewer.
   Other relative links (images, PDFs, etc.) are served read-only and open
   in a new browser tab.
+- The tree and any open tab auto-refresh (about once a second, paused while
+  the window/tab isn't visible) if the underlying files change on disk —
+  edited elsewhere, added, removed, or renamed — with no manual reload
+  needed. A file that disappears out from under an open tab shows an error
+  there instead of stale content, and recovers automatically if it reappears.
 - Open tabs and sidebar collapse state persist across restarts via the
   browser's localStorage, namespaced per root folder.

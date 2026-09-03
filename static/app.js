@@ -244,6 +244,7 @@ function closeTab(path) {
   if (idx === -1) return;
   tabsOrder.splice(idx, 1);
   removePaneDom(path);
+  openFileMtimes.delete(path);
   if (previewPath === path) previewPath = null;
   if (activeTab === path) {
     const next = tabsOrder[idx] || tabsOrder[idx - 1];
@@ -1122,10 +1123,18 @@ document.addEventListener("keydown", (e) => {
 
 async function loadTreeAndHeader() {
   const res = await fetch("/api/tree");
-  treeData = await res.json();
+  const newData = await res.json();
+  const rootChanged = !treeData || newData.rootAbsPath !== treeData.rootAbsPath;
+  // Full-object comparison, not just rootAbsPath: this is also how the
+  // auto-refresh poll (below) detects a file added/removed/renamed anywhere
+  // in the tree, so it can skip the DOM rebuild (and the collapse-state /
+  // cursor restore that comes with it) on every tick where nothing actually
+  // changed on disk.
+  const treeChanged = JSON.stringify(newData) !== JSON.stringify(treeData);
+  treeData = newData;
 
   if (treeData.rootAbsPath) {
-    addRecentRoot(treeData.rootAbsPath);
+    if (rootChanged) addRecentRoot(treeData.rootAbsPath);
     document.getElementById("repo-name").textContent = treeData.name;
     document.getElementById("repo-name").title = treeData.rootAbsPath;
     const fileCount = countFiles(treeData);
@@ -1136,7 +1145,8 @@ async function loadTreeAndHeader() {
     document.getElementById("file-count").textContent = "";
   }
 
-  renderTree();
+  if (treeChanged) renderTree();
+  return treeChanged;
 }
 
 async function boot() {
@@ -1154,6 +1164,71 @@ async function boot() {
   } else {
     renderEmptyStateIfNeeded();
   }
+
+  startAutoRefresh();
+}
+
+// ---------- auto-refresh ----------
+//
+// Polls for external changes (files edited/added/removed outside this app,
+// e.g. in your own editor) so the tree and any open tab stay current
+// without a manual reload. Both checks are cheap: the tree poll is the same
+// /api/tree fetch boot already does (just diffed against the last result,
+// see loadTreeAndHeader above), and content freshness is a single batched
+// mtime lookup (a stat() per open file, no file reads) rather than a
+// per-tab request or a content hash. Paused while the tab isn't visible --
+// no reason to poll a backgrounded window.
+
+const AUTO_REFRESH_INTERVAL_MS = 1000;
+// path -> last-observed mtime this map has confirmed the loaded content
+// matches. Deliberately NOT seeded at open time without a refetch -- a file
+// can change in the gap between the open-time fetch and the first poll
+// tick, and treating that already-changed mtime as "just the normal
+// baseline" would silently swallow the edit. So "no recorded mtime, or it
+// doesn't match what we just observed" always means "(re)fetch": one extra
+// request right after opening a tab, but no window where a real edit is
+// missed.
+const openFileMtimes = new Map();
+
+async function refreshOpenFileContents() {
+  const paths = tabsOrder.map((t) => t.path);
+  if (paths.length === 0) return;
+
+  const res = await fetch(`/api/mtimes?paths=${encodeURIComponent(paths.join(","))}`);
+  if (!res.ok) return;
+  const { mtimes } = await res.json();
+
+  for (const path of paths) {
+    const tab = findTab(path);
+    if (!tab) continue; // closed while this request was in flight
+    const mtime = mtimes[path];
+
+    if (mtime === undefined) {
+      // No longer resolves (deleted, renamed, or the root switched away
+      // underneath it). Only retry once per disappearance, not every tick,
+      // by requiring the map entry to be cleared before trying again --
+      // loadTabContent's own fetch will 404 and set tab.error itself, the
+      // same error surface a normal open failure already uses.
+      openFileMtimes.delete(path);
+      if (!tab.error) await loadTabContent(path);
+      continue;
+    }
+
+    if (openFileMtimes.get(path) !== mtime) {
+      openFileMtimes.set(path, mtime);
+      await loadTabContent(path);
+    }
+  }
+}
+
+async function autoRefreshTick() {
+  if (document.visibilityState !== "visible") return;
+  await loadTreeAndHeader();
+  await refreshOpenFileContents();
+}
+
+function startAutoRefresh() {
+  setInterval(autoRefreshTick, AUTO_REFRESH_INTERVAL_MS);
 }
 
 boot();
