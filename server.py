@@ -45,7 +45,6 @@ else:
     STATE_DIR = TOOL_DIR
 
 STATIC_DIR = TOOL_DIR / "static"
-DEFAULT_REPO_ROOT = TOOL_DIR.parent / "ray"
 STATE_FILE = STATE_DIR / ".md_viewer_state.json"
 
 EXCLUDED_DIR_NAMES = {
@@ -54,7 +53,10 @@ EXCLUDED_DIR_NAMES = {
 }
 
 app = Flask(__name__, static_folder=None)
-app.config["REPO_ROOT"] = DEFAULT_REPO_ROOT
+# No folder selected until main() (a saved last-root, or --repo) or
+# desktop.py sets one -- there's no sensible directory to guess at for a
+# general-purpose tool, so every fresh run prompts via the folder button.
+app.config["REPO_ROOT"] = None
 # Set True by desktop.py. The frontend uses this to gate desktop-only
 # keyboard shortcuts (Cmd+W especially) that must never be attempted in a
 # real browser tab -- browsers reserve those combinations themselves, so a
@@ -388,23 +390,21 @@ def static_files(filename):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, default=None,
-                         help="Repo root to scan for markdown files "
-                              "(default: last folder picked in-app, or ../ray if none yet)")
+                         help="Folder to scan for markdown files "
+                              "(default: last folder picked in-app, or none)")
     parser.add_argument("--port", type=int, default=8420)
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
 
-    if args.repo is not None:
-        chosen_root = args.repo.resolve()
-    else:
-        chosen_root = _load_last_root() or DEFAULT_REPO_ROOT
+    chosen_root = args.repo.resolve() if args.repo is not None else _load_last_root()
     app.config["REPO_ROOT"] = chosen_root
 
     url = f"http://127.0.0.1:{args.port}/"
     if not args.no_browser:
         threading.Timer(0.7, lambda: webbrowser.open(url)).start()
 
-    print(f"Markdown viewer serving {app.config['REPO_ROOT']} at {url}")
+    served = chosen_root if chosen_root is not None else "no folder selected yet"
+    print(f"Markdown viewer serving {served} at {url}")
     app.run(host="127.0.0.1", port=args.port, debug=False, threaded=True)
 
 
