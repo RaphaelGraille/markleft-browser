@@ -81,6 +81,11 @@ def main():
         width=1200,
         height=800,
         min_size=(700, 500),
+        # pywebview defaults this to False on every backend (it's meant for
+        # app-chrome-style windows, not one whose whole point is reading
+        # text) -- without it, the native webview itself blocks selection
+        # before it ever reaches our page's own JS/CSS.
+        text_select=True,
     )
     webview.start()
 
