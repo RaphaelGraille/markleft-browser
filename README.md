@@ -63,9 +63,13 @@ Tree navigation works everywhere (browser tab or desktop app):
 | `Esc` | Close an open dialog |
 
 These only work in the **desktop app** (never bound in a browser tab,
-since browsers reserve some of these themselves):
+since browsers reserve some of these themselves) and use whichever key
+your OS reports as "Meta" — `Cmd` on macOS, the Windows/Super key on
+Windows and Linux (only verified on macOS so far; the Windows/Linux
+builds are new and untested on real hardware, and the Windows key in
+particular is sometimes reserved by the OS itself for window snapping):
 
-| Shortcut | Action |
+| Shortcut (macOS) | Action |
 |---|---|
 | `Cmd+N` | Open a new window |
 | `Cmd+W` | Close the active tab |
