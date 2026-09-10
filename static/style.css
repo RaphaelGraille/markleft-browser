@@ -553,17 +553,34 @@ html, body {
    while the raw editor "smears" into view alongside it, rather than
    snapping in instantly. .preview-col needs no transition of its own: as
    a flex:1 sibling it continuously fills whatever width this one isn't
-   using, every frame of the transition, for free. */
+   using, every frame of the transition, for free.
+
+   Width and opacity are deliberately NOT in lockstep, the same asymmetric
+   trick the sidebar-collapse animation uses: a textarea's line-wrapping
+   recalculates continuously as its width changes, which looks like text
+   visibly "adapting in real time" if it's visible while still narrow/wide.
+   So opacity only starts rising once width is nearly settled on reveal
+   (transition below, on the target/edit-mode state), and drops to 0
+   immediately with no delay on hide (transition on the base state below)
+   -- content is never actually visible while its box is still resizing,
+   in either direction. */
 .edit-raw-col {
   width: 0;
+  min-width: 0; /* flex items default to min-width:auto (intrinsic content
+    size), which would otherwise silently clamp an animated width above 0 */
   flex-shrink: 0;
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
   box-sizing: border-box;
-  padding: 20px;
+  /* Collapsed to 0 padding/border too -- with box-sizing:border-box, a
+     width:0 box still can't render smaller than its own padding+border,
+     so those need to animate down to 0 right along with width or the
+     column visibly gets "stuck" at that leftover size instead of
+     disappearing. */
+  padding: 0;
   border: none;
-  border-right: 1px solid var(--border);
+  border-right: 0 solid var(--border);
   outline: none;
   resize: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -571,13 +588,16 @@ html, body {
   line-height: 1.5;
   background: var(--bg-tab-active);
   color: var(--text);
-  transition: width 0.6s ease, opacity 0.6s ease;
+  transition: width 0.6s ease, padding 0.6s ease, border-right-width 0.6s ease, opacity 0.15s ease;
 }
 
 #app.edit-mode .pane.active .edit-raw-col {
   width: 50%;
   opacity: 1;
   pointer-events: auto;
+  padding: 20px;
+  border-right-width: 1px;
+  transition: width 0.6s ease, padding 0.6s ease, border-right-width 0.6s ease, opacity 0.25s ease 0.4s;
 }
 
 .preview-col {
