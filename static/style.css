@@ -559,11 +559,13 @@ html, body {
    trick the sidebar-collapse animation uses: a textarea's line-wrapping
    recalculates continuously as its width changes, which looks like text
    visibly "adapting in real time" if it's visible while still narrow/wide.
-   So opacity only starts rising once width is nearly settled on reveal
-   (transition below, on the target/edit-mode state), and drops to 0
-   immediately with no delay on hide (transition on the base state below)
-   -- content is never actually visible while its box is still resizing,
-   in either direction. */
+   So on reveal (transition below, on the target/edit-mode state) opacity
+   starts rising only once width is essentially done (0.5s into the 0.6s
+   width move) and keeps fading in past that point, finishing noticeably
+   after the panel itself has stopped moving -- and on hide (transition on
+   the base state below) it drops to 0 immediately with no delay, so
+   content is never actually visible while its box is still resizing, in
+   either direction. */
 .edit-raw-col {
   width: 0;
   min-width: 0; /* flex items default to min-width:auto (intrinsic content
@@ -597,7 +599,7 @@ html, body {
   pointer-events: auto;
   padding: 20px;
   border-right-width: 1px;
-  transition: width 0.6s ease, padding 0.6s ease, border-right-width 0.6s ease, opacity 0.25s ease 0.4s;
+  transition: width 0.6s ease, padding 0.6s ease, border-right-width 0.6s ease, opacity 0.35s ease 0.5s;
 }
 
 .preview-col {
