@@ -560,12 +560,12 @@ html, body {
    recalculates continuously as its width changes, which looks like text
    visibly "adapting in real time" if it's visible while still narrow/wide.
    So on reveal (transition below, on the target/edit-mode state) opacity
-   starts rising only once width is essentially done (0.5s into the 0.6s
-   width move) and keeps fading in past that point, finishing noticeably
-   after the panel itself has stopped moving -- and on hide (transition on
-   the base state below) it drops to 0 immediately with no delay, so
-   content is never actually visible while its box is still resizing, in
-   either direction. */
+   starts rising partway through the 0.6s width move (0.4s in) and keeps
+   fading in past that point (ease-out: fast at first, slowing toward the
+   end), finishing noticeably after the panel itself has stopped moving --
+   and on hide (transition on the base state below) it drops to 0
+   immediately with no delay, so content is never actually visible while
+   its box is still resizing, in either direction. */
 .edit-raw-col {
   width: 0;
   min-width: 0; /* flex items default to min-width:auto (intrinsic content
@@ -596,10 +596,14 @@ html, body {
 #app.edit-mode .pane.active .edit-raw-col {
   width: 50%;
   opacity: 1;
+  overflow-y: auto; /* the base rule's overflow:hidden (needed to clip
+    content while collapsed) would otherwise also block the textarea's own
+    scrolling once expanded -- with nothing for it to scroll internally,
+    wheel events bubble up and scroll the app around it instead */
   pointer-events: auto;
   padding: 20px;
   border-right-width: 1px;
-  transition: width 0.6s ease, padding 0.6s ease, border-right-width 0.6s ease, opacity 0.35s ease 0.5s;
+  transition: width 0.6s ease, padding 0.6s ease, border-right-width 0.6s ease, opacity 0.45s ease-out 0.4s;
 }
 
 .preview-col {
