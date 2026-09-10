@@ -14,13 +14,20 @@ const ICON_PREVIEW = `<svg viewBox="0 0 16 16" width="12" height="12" fill="none
 const ICON_PIN = `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M8 1.6c-2 0-3.6 1.6-3.6 3.6 0 2.7 3.6 7.2 3.6 7.2s3.6-4.5 3.6-7.2c0-2-1.6-3.6-3.6-3.6z"/><circle cx="8" cy="5.2" r="1.3"/></svg>`;
 const ICON_SWITCH_FOLDER = `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M1.5 3.5h4l1.2 1.5H14a.5.5 0 0 1 .5.5v7a.5.5 0 0 1-.5.5H1.5a.5.5 0 0 1-.5-.5v-8.5a.5.5 0 0 1 .5-.5z"/><path d="M6 9.5h5m0 0-2-2m2 2-2 2" stroke-width="1.1"/></svg>`;
 const ICON_NEW_WINDOW = `<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><rect x="1.5" y="2.5" width="13" height="10" rx="1.5"/><line x1="1.5" y1="5.2" x2="14.5" y2="5.2"/><line x1="8" y1="7.5" x2="8" y2="11" stroke-width="1.1"/><line x1="6.3" y1="9.3" x2="9.7" y2="9.3" stroke-width="1.1"/></svg>`;
+const ICON_EDIT = `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M11 2.3 13.7 5 5.2 13.5l-3.2.7.7-3.2z"/></svg>`;
+const ICON_SAVE = `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"><path d="M2.5 2.5h9l2 2v9h-11z"/><path d="M4.5 2.5v4h6v-4M4.5 13.5v-4h7v4"/></svg>`;
 
-/** Ordered list of open tabs: {path, title, rawText, error, permanent} */
+/** Ordered list of open tabs: {path, title, rawText, error, permanent, dirty} */
 let tabsOrder = [];
 let previewPath = null;
 let activeTab = null;
 let treeData = null;
 let draggingPath = null;
+// Global toggle (not persisted -- always starts off), sticky across tab
+// switches. Each tab keeps its own draft in its own pane's textarea
+// regardless, so switching tabs while this is on never loses anything --
+// only closing a dirty tab needs a confirmation (see closeTab).
+let editModeOn = false;
 
 // ---------- persistence ----------
 //
@@ -228,13 +235,28 @@ function pinTab(path) {
 
 async function loadTabContent(path) {
   const tab = findTab(path);
-  if (!tab || tab._loading) return;
+  // Never clobber an in-progress edit -- a dirty tab is left completely
+  // alone (no fetch, no re-render) until it's saved or its edits are
+  // explicitly discarded. This is what stops both auto-refresh and the
+  // "re-click an already-open file" manual-refresh path from silently
+  // overwriting unsaved work.
+  if (!tab || tab._loading || tab.dirty) return;
   tab._loading = true;
   try {
     const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     tab.rawText = await res.text();
     tab.error = null;
+    // Seed the mtime baseline right now rather than waiting for the next
+    // auto-refresh poll tick (up to a second away): if editing starts
+    // before that tick fires, openFileMtimes would still be unset when
+    // going dirty freezes it (see refreshOpenFileContents), leaving the
+    // save endpoint's conflict check with nothing to compare against.
+    const mres = await fetch(`/api/mtimes?paths=${encodeURIComponent(path)}`);
+    if (mres.ok) {
+      const { mtimes } = await mres.json();
+      if (mtimes[path] !== undefined) openFileMtimes.set(path, mtimes[path]);
+    }
   } catch (err) {
     tab.error = String(err);
   } finally {
@@ -243,7 +265,13 @@ async function loadTabContent(path) {
   renderPane(path);
 }
 
-function closeTab(path) {
+// The actual close, no questions asked -- used once the caller has already
+// decided (or already confirmed) that discarding any unsaved edits is fine.
+// Root-switching uses this directly: it shows its own single upfront
+// confirmation naming every tab that will close (dirty ones called out
+// specifically), so looping this over each one must not also pop N
+// redundant per-tab prompts on top of that.
+function _closeTabImmediate(path) {
   const idx = tabsOrder.findIndex((t) => t.path === path);
   if (idx === -1) return;
   tabsOrder.splice(idx, 1);
@@ -258,6 +286,23 @@ function closeTab(path) {
   saveState();
 }
 
+// The interactive close (tab's × button, Cmd+W): confirms first if the tab
+// has unsaved edits, since this is the one action that can discard them
+// outright rather than just switching away from them.
+async function closeTab(path) {
+  const tab = findTab(path);
+  if (tab && tab.dirty) {
+    const proceed = await showModal({
+      title: "Discard unsaved changes?",
+      bodyHtml: `<p><strong>${escapeHtml(tab.title)}</strong> has unsaved edits. Closing this tab will discard them.</p>`,
+      confirmLabel: "Discard changes",
+      cancelLabel: "Keep editing",
+    });
+    if (!proceed) return;
+  }
+  _closeTabImmediate(path);
+}
+
 function setActiveTab(path) {
   activeTab = path;
   renderTabbar();
@@ -269,6 +314,7 @@ function setActiveTab(path) {
     const treeFileEl = document.querySelector(`.tree-file[data-path="${cssEscape(path)}"]`);
     if (treeFileEl) treeFileEl.classList.add("active");
   }
+  document.getElementById("edit-toolbar").classList.toggle("hidden", !path);
   renderEmptyStateIfNeeded();
   saveState();
 }
@@ -350,6 +396,13 @@ function renderTabbar() {
     label.textContent = tab.title;
     el.appendChild(label);
 
+    if (tab.dirty) {
+      const dot = document.createElement("span");
+      dot.className = "tab-dirty-dot";
+      dot.title = "Unsaved changes";
+      el.appendChild(dot);
+    }
+
     if (!tab.permanent) {
       const pinBtn = document.createElement("span");
       pinBtn.className = "tab-pin";
@@ -375,33 +428,109 @@ function renderTabbar() {
   });
 }
 
+// Every pane always contains BOTH the raw-source textarea (left) and the
+// rendered preview (right), regardless of whether edit mode is currently
+// on -- a CSS class on #app shows/hides the raw column, so toggling edit
+// mode is an instant class flip, never a rebuild, and switching tabs while
+// editing "just works" since each tab's own draft already lives in its own
+// pane's own textarea (panes are never torn down on a mere tab switch,
+// only on close).
+
+const LIVE_PREVIEW_DEBOUNCE_MS = 150;
+
+function attachEditListeners(rawCol, path) {
+  let debounceTimer = null;
+  rawCol.addEventListener("input", () => {
+    const tab = findTab(path);
+    if (!tab) return;
+    if (!tab.dirty) {
+      tab.dirty = true;
+      renderTabbar(); // show the dirty dot -- only needed on this first flip
+    }
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => updateLivePreview(path), LIVE_PREVIEW_DEBOUNCE_MS);
+  });
+}
+
+// Proportional scroll sync: scrollTop% on one side maps to the same % on
+// the other. Simple and cheap, at the cost of precision on documents with
+// very unevenly-sized sections (e.g. one huge code block skews the rest) --
+// a deliberate v1 tradeoff, not an oversight; true line-mapped sync would
+// need marked.js to emit per-source-line anchors, which it doesn't by default.
+function attachScrollSync(rawCol, previewCol) {
+  let syncing = false;
+  function sync(source, target) {
+    if (syncing) return;
+    syncing = true;
+    const range = source.scrollHeight - source.clientHeight;
+    const ratio = range <= 0 ? 0 : source.scrollTop / range;
+    target.scrollTop = ratio * (target.scrollHeight - target.clientHeight);
+    syncing = false;
+  }
+  rawCol.addEventListener("scroll", () => sync(rawCol, previewCol));
+  previewCol.addEventListener("scroll", () => sync(previewCol, rawCol));
+}
+
+// Re-renders ONLY the preview column from the textarea's current (possibly
+// unsaved) value -- never touches tab.rawText or the textarea itself, so
+// this is safe to call on every keystroke (debounced) without interfering
+// with the dirty/save model at all.
+async function updateLivePreview(path) {
+  const pane = document.getElementById(paneId(path));
+  if (!pane) return;
+  const rawCol = pane.querySelector(".edit-raw-col");
+  const previewCol = pane.querySelector(".preview-col");
+  const container = await renderMarkdownAsync(rawCol.value, path);
+  if (document.getElementById(paneId(path)) !== pane) return; // closed while awaiting the worker
+  previewCol.innerHTML = "";
+  previewCol.appendChild(container);
+}
+
 async function renderPane(path) {
   const tab = findTab(path);
   if (!tab) return;
   let pane = document.getElementById(paneId(path));
+  let rawCol, previewCol;
   if (!pane) {
     pane = document.createElement("div");
     pane.id = paneId(path);
     pane.className = "pane";
+
+    rawCol = document.createElement("textarea");
+    rawCol.className = "edit-raw-col";
+    rawCol.spellcheck = false;
+    attachEditListeners(rawCol, path);
+    pane.appendChild(rawCol);
+
+    previewCol = document.createElement("div");
+    previewCol.className = "preview-col";
+    pane.appendChild(previewCol);
+
+    attachScrollSync(rawCol, previewCol);
     panesEl.appendChild(pane);
+  } else {
+    rawCol = pane.querySelector(".edit-raw-col");
+    previewCol = pane.querySelector(".preview-col");
   }
-  pane.innerHTML = "";
+
+  previewCol.innerHTML = "";
   if (!tab.permanent) {
     const stamp = document.createElement("div");
     stamp.className = "preview-stamp";
     stamp.innerHTML = `${ICON_PREVIEW}<span>Preview &middot; click to pin</span>`;
     stamp.addEventListener("click", () => pinTab(path));
-    pane.appendChild(stamp);
+    previewCol.appendChild(stamp);
   }
   if (tab.error) {
     const err = document.createElement("div");
     err.className = "pane-error";
     err.textContent = `Failed to load ${path}: ${tab.error}`;
-    pane.appendChild(err);
+    previewCol.appendChild(err);
   } else if (tab.rawText !== null) {
     const container = await renderMarkdownAsync(tab.rawText, path);
     if (findTab(path) !== tab) return; // superseded while we were awaiting the worker
-    pane.appendChild(container);
+    previewCol.appendChild(container);
+    if (!tab.dirty) rawCol.value = tab.rawText; // never clobber an in-progress edit
   }
   if (path === activeTab) pane.classList.add("active");
   renderEmptyStateIfNeeded();
@@ -1001,13 +1130,19 @@ async function confirmAndCommitRootSwitch(data) {
   const { root, survivingRemap, willClose } = data;
 
   if (willClose.length > 0) {
-    const listHtml = willClose.map((p) => `<li title="${escapeHtml(p)}">${escapeHtml(p)}</li>`).join("");
+    const listHtml = willClose
+      .map((p) => {
+        const dirty = findTab(p)?.dirty;
+        return `<li title="${escapeHtml(p)}">${escapeHtml(p)}${dirty ? " <strong>(unsaved edits will be lost)</strong>" : ""}</li>`;
+      })
+      .join("");
+    const dirtyCount = willClose.filter((p) => findTab(p)?.dirty).length;
     const proceed = await showModal({
       title: "Switch root folder?",
       bodyHtml: `
         <p>Switching to <strong>${escapeHtml(root)}</strong>.</p>
         <p>${willClose.length} open file${willClose.length === 1 ? "" : "s"} will be closed because
-        they're outside the new folder:</p>
+        they're outside the new folder${dirtyCount > 0 ? `, including ${dirtyCount} with unsaved edits` : ""}:</p>
         <ul>${listHtml}</ul>`,
     });
     if (!proceed) return;
@@ -1039,7 +1174,10 @@ async function applyRootSwitch(survivingRemap, willClose) {
   // any of them run, or they'd write into the OLD root's storage slot.
   await loadTreeAndHeader();
 
-  willClose.forEach((p) => closeTab(p));
+  // Already confirmed (with any dirty ones called out) above -- bypass
+  // closeTab's own per-tab dirty prompt, which would otherwise stack one
+  // confirmation per dirty tab on top of the one just shown.
+  willClose.forEach((p) => _closeTabImmediate(p));
 
   Object.entries(survivingRemap).forEach(([oldPath, newPath]) => {
     if (oldPath === newPath) return;
@@ -1128,15 +1266,94 @@ sidebarResizer.addEventListener("mousedown", (e) => {
   document.addEventListener("mouseup", onMouseUp);
 });
 
+// ---------- editing ----------
+
+const editToggleBtn = document.getElementById("edit-toggle-btn");
+const saveBtn = document.getElementById("save-btn");
+document.getElementById("edit-icon").innerHTML = ICON_EDIT;
+document.getElementById("save-icon").innerHTML = ICON_SAVE;
+
+function setEditMode(on) {
+  editModeOn = on;
+  document.getElementById("app").classList.toggle("edit-mode", on);
+  editToggleBtn.classList.toggle("active", on);
+  editToggleBtn.title = on ? "Exit edit mode" : "Edit this file";
+  // Entering edit mode force-pins the active tab: a preview tab getting
+  // silently replaced the moment you click the next file in the tree would
+  // otherwise discard whatever you just typed. pinTab is already a no-op on
+  // an already-permanent tab.
+  if (on && activeTab) pinTab(activeTab);
+}
+
+editToggleBtn.addEventListener("click", () => setEditMode(!editModeOn));
+
+async function saveTab(path, { force = false } = {}) {
+  const tab = findTab(path);
+  const pane = document.getElementById(paneId(path));
+  const rawCol = pane && pane.querySelector(".edit-raw-col");
+  if (!tab || !rawCol) return;
+  const content = rawCol.value;
+
+  const res = await fetch("/api/file", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path, content, expectedMtime: openFileMtimes.get(path) ?? null, force }),
+  });
+
+  if (res.status === 409) {
+    const proceed = await showModal({
+      title: "File changed on disk",
+      bodyHtml: `<p><strong>${escapeHtml(tab.title)}</strong> was modified outside the app since
+        you started editing. Overwrite those external changes with yours?</p>`,
+      confirmLabel: "Overwrite",
+      cancelLabel: "Cancel",
+    });
+    if (proceed) await saveTab(path, { force: true });
+    return;
+  }
+
+  if (!res.ok) {
+    await showModal({
+      title: "Save failed",
+      bodyHtml: `<p>Could not save <strong>${escapeHtml(tab.title)}</strong>: ${res.status} ${escapeHtml(res.statusText)}</p>`,
+      confirmLabel: "OK",
+      cancelLabel: "OK",
+    });
+    return;
+  }
+
+  const data = await res.json();
+  tab.rawText = content;
+  tab.dirty = false;
+  openFileMtimes.set(path, data.mtime);
+  renderTabbar();
+}
+
+saveBtn.addEventListener("click", () => {
+  if (activeTab) saveTab(activeTab);
+});
+
+// Native last-resort safety net for the one path none of the in-app guards
+// cover: the browser tab or window itself closing outright (not just a
+// tab within the app) while something is unsaved.
+window.addEventListener("beforeunload", (e) => {
+  if (tabsOrder.some((t) => t.dirty)) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
+});
+
 // ---------- desktop-only keyboard shortcuts ----------
 //
-// Cmd+N/W/B/Left/Right only, gated on treeData.isDesktop (set once the
+// Cmd+N/W/B/S/Left/Right only, gated on treeData.isDesktop (set once the
 // first /api/tree response arrives). Deliberately never bound in a plain
-// browser tab: Cmd+W especially is reserved by every real browser (closing
-// the current tab) and isn't something a page can safely or reliably
-// intercept there -- trying would either silently fail or fight the
-// browser's own handling. Inside the desktop app's own window there's no
-// browser chrome to conflict with, so these are safe to own outright.
+// browser tab: Cmd+W and Cmd+S especially are reserved by every real
+// browser (closing the tab; "Save Page As…") and aren't something a page
+// can safely or reliably intercept there -- trying would either silently
+// fail or fight the browser's own handling. Inside the desktop app's own
+// window there's no browser chrome to conflict with, so these are safe to
+// own outright. The floating save button is the universal path (browser
+// tab or desktop app) either way.
 
 function activateAdjacentTab(direction) {
   if (tabsOrder.length === 0) return;
@@ -1167,6 +1384,9 @@ document.addEventListener("keydown", (e) => {
   } else if (key === "b") {
     e.preventDefault();
     setSidebarCollapsed(!sidebarCollapsed);
+  } else if (key === "s") {
+    e.preventDefault();
+    if (activeTab) saveTab(activeTab);
   }
 });
 
@@ -1252,6 +1472,12 @@ async function refreshOpenFileContents() {
   for (const path of paths) {
     const tab = findTab(path);
     if (!tab) continue; // closed while this request was in flight
+    if (tab.dirty) continue; // leave openFileMtimes frozen at edit-start time --
+    // it doubles as the save endpoint's conflict-detection baseline, so it
+    // must NOT silently advance to the new external mtime while dirty (that
+    // would make a real external change during editing invisible at save
+    // time, since the server's own mtime check compares against whatever
+    // this map last recorded).
     const mtime = mtimes[path];
 
     if (mtime === undefined) {

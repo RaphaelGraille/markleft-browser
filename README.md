@@ -2,12 +2,13 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A local, read-only markdown viewer: point it at any folder and browse its
-`.md` files in a file-tree side panel with tabs, GitHub-style rendering,
-and full keyboard navigation. No editing, no accounts, no network calls at
-runtime — everything (including syntax highlighting) is bundled and runs
-entirely on your machine. Ships as a real double-clickable desktop app for
-macOS, Windows, and Linux, or you can run it from source in a browser tab.
+A local markdown viewer (with basic editing) and browser: point it at any
+folder and browse its `.md` files in a file-tree side panel with tabs,
+GitHub-style rendering, and full keyboard navigation. No accounts, no
+network calls at runtime — everything (including syntax highlighting) is
+bundled and runs entirely on your machine. Ships as a real double-clickable
+desktop app for macOS, Windows, and Linux, or you can run it from source in
+a browser tab.
 
 ## Features
 
@@ -50,6 +51,16 @@ macOS, Windows, and Linux, or you can run it from source in a browser tab.
   fully independent second window on its own port, so two windows can
   browse different folders — or the same one — without affecting each
   other.
+- **Basic editing**: the floating pen button (top-right) splits the pane
+  into a raw-markdown editor (left) and a live preview (right, updating as
+  you type) with synced scrolling between them. Entering edit mode pins the
+  active tab, so it's never silently replaced mid-edit; a dirty tab shows a
+  small dot and confirms before you can close or discard it (a tab, the
+  whole root switching away, or the browser tab/window itself closing).
+  Save is manual — the button next to the pen icon, or `Cmd+S` in the
+  desktop app — and writes atomically, so a crash mid-save can't corrupt
+  the file. If the file changed on disk since you started editing, saving
+  warns before overwriting those external changes.
 
 ### Keyboard shortcuts
 
@@ -74,6 +85,7 @@ particular is sometimes reserved by the OS itself for window snapping):
 | `Cmd+N` | Open a new window |
 | `Cmd+W` | Close the active tab |
 | `Cmd+B` | Show/hide the sidebar |
+| `Cmd+S` | Save the active tab's edits |
 | `Cmd+←` / `Cmd+→` | Switch to the previous / next tab |
 
 ## Installation

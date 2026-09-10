@@ -1,9 +1,9 @@
-"""Local, read-only markdown viewer for the Marvatar/ray repo.
+"""MarkLeft Browser: a local markdown viewer and browser, with basic editing.
 
-Serves a file-tree API + a static single-page frontend. No editing,
-no external network calls at runtime (all JS/CSS assets are vendored
-under static/vendor/). The browsed root can be changed at runtime from the
-UI (click the folder name); the choice persists across restarts.
+Serves a file-tree API + a static single-page frontend. No external
+network calls at runtime (all JS/CSS assets are vendored under
+static/vendor/). The browsed root can be changed at runtime from the UI
+(click the folder name); the choice persists across restarts.
 
 Usage:
     python3 server.py [--repo <path>] [--port 8420] [--no-browser]
@@ -168,6 +168,39 @@ def api_file():
     rel_path = request.args.get("path", "")
     resolved = _resolve_safe_md(rel_path)
     return app.response_class(resolved.read_text(encoding="utf-8"), mimetype="text/plain")
+
+
+@app.post("/api/file")
+def api_save_file():
+    """Save edited content back to an existing .md file.
+
+    Body: {"path": "...", "content": "...", "expectedMtime": <float or null>,
+    "force": bool}. If expectedMtime is given and no longer matches the
+    file's current mtime (it changed on disk since the editor last saw it)
+    and force isn't set, returns 409 with the current mtime instead of
+    writing -- the caller re-sends with force=true to overwrite anyway.
+
+    Written atomically (temp file in the same directory, then an atomic
+    rename over the original) so a crash or power loss mid-write can never
+    leave a half-written file -- this is the first place this tool ever
+    mutates a real file, so that guarantee is worth having from the start.
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    resolved = _resolve_safe_md(body.get("path", ""))
+    content = body.get("content", "")
+    expected_mtime = body.get("expectedMtime")
+    force = bool(body.get("force", False))
+
+    if not force and expected_mtime is not None:
+        current_mtime = resolved.stat().st_mtime
+        if current_mtime != expected_mtime:
+            return jsonify({"conflict": True, "currentMtime": current_mtime}), 409
+
+    tmp_path = resolved.with_name(resolved.name + ".mdviewer-tmp")
+    tmp_path.write_text(content, encoding="utf-8")
+    os.replace(tmp_path, resolved)
+
+    return jsonify({"mtime": resolved.stat().st_mtime})
 
 
 @app.get("/api/asset")
