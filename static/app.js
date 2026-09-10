@@ -445,7 +445,18 @@ function attachEditListeners(rawCol, path) {
     if (!tab) return;
     if (!tab.dirty) {
       tab.dirty = true;
-      renderTabbar(); // show the dirty dot -- only needed on this first flip
+      // Pinning only when the TOGGLE is switched on (see setEditMode)
+      // misses every tab opened afterward, while edit mode was already on
+      // -- a new preview tab you then start typing into is still a
+      // preview, so the next file you click would silently replace it.
+      // The real risk is dirty content getting discarded, so pin exactly
+      // at the moment a tab actually becomes dirty (a no-op if it's
+      // already permanent), not merely at activation. pinTab only
+      // re-renders the tabbar when it actually does something, so the
+      // dirty-dot render below is still needed even when pinTab no-ops
+      // (the common case: edit mode already force-pinned this tab).
+      pinTab(path);
+      renderTabbar();
     }
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => updateLivePreview(path), LIVE_PREVIEW_DEBOUNCE_MS);
@@ -458,17 +469,33 @@ function attachEditListeners(rawCol, path) {
 // a deliberate v1 tradeoff, not an oversight; true line-mapped sync would
 // need marked.js to emit per-source-line anchors, which it doesn't by default.
 function attachScrollSync(rawCol, previewCol) {
-  let syncing = false;
-  function sync(source, target) {
-    if (syncing) return;
-    syncing = true;
+  // A programmatic `target.scrollTop = ...` below fires target's own
+  // "scroll" event ASYNCHRONOUSLY (the next task/frame, not synchronously
+  // in this call), so a same-tick reentrancy flag (set true, sync, set
+  // false) is already back to false by the time that echo event arrives --
+  // it then triggers a sync back in the other direction, which triggers
+  // another, each pass drifting slightly from rounding. That ping-pong is
+  // exactly a slow runaway scroll. The fix: mark "the NEXT scroll event on
+  // THIS specific target is our own echo" and consume that flag whenever
+  // it actually fires, however long that takes -- not on a timer guess.
+  let suppressRaw = false;
+  let suppressPreview = false;
+
+  function sync(source, target, setSuppressOnTarget) {
     const range = source.scrollHeight - source.clientHeight;
     const ratio = range <= 0 ? 0 : source.scrollTop / range;
+    setSuppressOnTarget(true);
     target.scrollTop = ratio * (target.scrollHeight - target.clientHeight);
-    syncing = false;
   }
-  rawCol.addEventListener("scroll", () => sync(rawCol, previewCol));
-  previewCol.addEventListener("scroll", () => sync(previewCol, rawCol));
+
+  rawCol.addEventListener("scroll", () => {
+    if (suppressRaw) { suppressRaw = false; return; }
+    sync(rawCol, previewCol, (v) => { suppressPreview = v; });
+  });
+  previewCol.addEventListener("scroll", () => {
+    if (suppressPreview) { suppressPreview = false; return; }
+    sync(previewCol, rawCol, (v) => { suppressRaw = v; });
+  });
 }
 
 // Re-renders ONLY the preview column from the textarea's current (possibly
