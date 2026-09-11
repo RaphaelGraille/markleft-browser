@@ -461,6 +461,20 @@ function attachEditListeners(rawCol, path) {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => updateLivePreview(path), LIVE_PREVIEW_DEBOUNCE_MS);
   });
+
+  // A plain <textarea> doesn't intercept Tab by default -- the browser just
+  // moves focus to the next element instead of inserting a tab character,
+  // which is useless for editing markdown (nested lists, code blocks).
+  // setRangeText replaces the current selection (or just inserts at the
+  // cursor if nothing's selected) and leaves the cursor right after it,
+  // then the same "input" event every other edit already fires through
+  // dirty-tracking/live-preview picks it up identically.
+  rawCol.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;
+    e.preventDefault();
+    rawCol.setRangeText("\t", rawCol.selectionStart, rawCol.selectionEnd, "end");
+    rawCol.dispatchEvent(new Event("input", { bubbles: true }));
+  });
 }
 
 // Proportional scroll sync: scrollTop% on one side maps to the same % on
