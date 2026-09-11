@@ -60,7 +60,11 @@ a browser tab.
   Save is manual — the button next to the pen icon, or `Cmd+S` in the
   desktop app — and writes atomically, so a crash mid-save can't corrupt
   the file. If the file changed on disk since you started editing, saving
-  warns before overwriting those external changes.
+  warns before overwriting those external changes. The editor has its own
+  "paper" background (distinct from pure white/the app's own surface) and
+  a vendored monospace font (JetBrains Mono); the preview sits visually
+  above it with a drop shadow; and the divider between the two is
+  draggable, independent of the sidebar's own resizer.
 
 ### Keyboard shortcuts
 

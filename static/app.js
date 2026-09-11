@@ -480,6 +480,58 @@ function attachEditListeners(rawCol, path) {
 // Proportional scroll sync: scrollTop% on one side maps to the same % on
 // the other. Simple and cheap, at the cost of precision on documents with
 // very unevenly-sized sections (e.g. one huge code block skews the rest) --
+const EDITOR_WIDTH_KEY = "mdviewer:editorWidth";
+const EDITOR_MIN_WIDTH = 240;
+const EDITOR_PREVIEW_MIN_WIDTH = 240; // leave the preview at least this much room
+
+function applyEditorWidth(px) {
+  // A loose, window-relative safety net -- not the precise pane-width
+  // clamp the drag handler below applies (it always fires first and is
+  // tighter, since the pane itself is narrower than the window), but this
+  // still matters for the boot-time/persisted-value path, where no live
+  // pane rect exists yet to clamp against precisely.
+  const maxWidth = window.innerWidth * 0.7;
+  document.documentElement.style.setProperty("--editor-w", `${Math.max(0, Math.min(px, maxWidth))}px`);
+}
+
+// Global, like sidebar width -- one persisted split, not one per tab, so
+// resizing while editing one file carries over to the next.
+const savedEditorWidth = localStorage.getItem(EDITOR_WIDTH_KEY);
+if (savedEditorWidth) applyEditorWidth(parseFloat(savedEditorWidth));
+
+// Each pane gets its own resizer element (built once, in renderPane, right
+// alongside its own raw/preview columns), but they all drag the same
+// --editor-w custom property -- exactly the sidebar-resizer pattern, just
+// scoped to whichever pane the drag actually started on rather than the
+// whole window's left edge.
+function attachEditorResizer(resizerEl, pane) {
+  resizerEl.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    resizerEl.classList.add("resizing");
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    function onMouseMove(ev) {
+      const paneRect = pane.getBoundingClientRect();
+      const maxWidth = paneRect.width - EDITOR_PREVIEW_MIN_WIDTH;
+      const raw = ev.clientX - paneRect.left;
+      applyEditorWidth(Math.max(EDITOR_MIN_WIDTH, Math.min(raw, maxWidth)));
+    }
+    function onMouseUp() {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      resizerEl.classList.remove("resizing");
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      const finalWidth = getComputedStyle(document.documentElement).getPropertyValue("--editor-w");
+      localStorage.setItem(EDITOR_WIDTH_KEY, parseFloat(finalWidth));
+    }
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  });
+}
+
 // a deliberate v1 tradeoff, not an oversight; true line-mapped sync would
 // need marked.js to emit per-source-line anchors, which it doesn't by default.
 function attachScrollSync(rawCol, previewCol) {
@@ -542,6 +594,11 @@ async function renderPane(path) {
     rawCol.spellcheck = false;
     attachEditListeners(rawCol, path);
     pane.appendChild(rawCol);
+
+    const resizer = document.createElement("div");
+    resizer.className = "editor-resizer";
+    attachEditorResizer(resizer, pane);
+    pane.appendChild(resizer);
 
     previewCol = document.createElement("div");
     previewCol.className = "preview-col";
@@ -1314,9 +1371,18 @@ const saveBtn = document.getElementById("save-btn");
 document.getElementById("edit-icon").innerHTML = ICON_EDIT;
 document.getElementById("save-icon").innerHTML = ICON_SAVE;
 
+const EDITOR_ANIMATION_MS = 900; // covers the longest reveal path (0.85s) with a little slack
+
 function setEditMode(on) {
   editModeOn = on;
-  document.getElementById("app").classList.toggle("edit-mode", on);
+  const appEl = document.getElementById("app");
+  // Gates the width/padding/border/opacity transitions in CSS -- present
+  // only for this deliberate reveal/hide, never during a live resizer
+  // drag (which also changes width, but must track the mouse instantly,
+  // not lag behind it through a 0.6s transition).
+  appEl.classList.add("editor-animating");
+  setTimeout(() => appEl.classList.remove("editor-animating"), EDITOR_ANIMATION_MS);
+  appEl.classList.toggle("edit-mode", on);
   editToggleBtn.classList.toggle("active", on);
   editToggleBtn.title = on ? "Exit edit mode" : "Edit this file";
   // Entering edit mode force-pins the active tab: a preview tab getting

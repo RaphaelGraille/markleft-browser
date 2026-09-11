@@ -1,5 +1,6 @@
 :root {
   --sidebar-w: 300px;
+  --editor-w: 480px;
   --border: #d0d7de;
   --bg-sidebar: #f6f8fa;
   --bg-tab: #eaeef2;
@@ -11,6 +12,10 @@
   --accent: #0969da;
   --accent-soft: rgba(9, 105, 218, 0.12);
   --danger: #cf222e;
+  /* A warm off-white, not pure white, so the raw-source editor reads as
+     its own distinct "paper" surface rather than just more app chrome. */
+  --editor-bg: #faf7f0;
+  --editor-border: #ded6c4;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,7 +30,30 @@
     --text-faint: #6e7681;
     --accent: #58a6ff;
     --accent-soft: rgba(88, 166, 255, 0.16);
+    /* A warm dark gray, distinct from the cooler blue-black used
+       everywhere else, for the same "this is a different surface" cue. */
+    --editor-bg: #26241f;
+    --editor-border: #453f30;
   }
+}
+
+/* Vendored (static/vendor/fonts/), not a Google Fonts CDN link -- consistent
+   with the rest of this app's assets, and consistent with the no-network-
+   calls-at-runtime guarantee. JetBrains Mono, OFL-licensed; see
+   vendor/fonts/JetBrainsMono-OFL.txt. */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/static/vendor/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/static/vendor/fonts/JetBrainsMono-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
 }
 
 * { box-sizing: border-box; }
@@ -565,7 +593,13 @@ html, body {
    end), finishing noticeably after the panel itself has stopped moving --
    and on hide (transition on the base state below) it drops to 0
    immediately with no delay, so content is never actually visible while
-   its box is still resizing, in either direction. */
+   its box is still resizing, in either direction.
+
+   The transitions themselves are gated behind #app.editor-animating (set
+   by setEditMode, removed ~900ms later -- see app.js), NOT applied
+   unconditionally: width is also what a live resizer drag changes, and if
+   the transition were always active, every drag update would lag behind
+   the mouse by up to 0.6s instead of tracking it in real time. */
 .edit-raw-col {
   width: 0;
   min-width: 0; /* flex items default to min-width:auto (intrinsic content
@@ -582,19 +616,22 @@ html, body {
      disappearing. */
   padding: 0;
   border: none;
-  border-right: 0 solid var(--border);
+  border-right: 0 solid var(--editor-border);
   outline: none;
   resize: none;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px;
-  line-height: 1.5;
-  background: var(--bg-tab-active);
+  line-height: 1.6;
+  background: var(--editor-bg);
   color: var(--text);
+}
+
+#app.editor-animating .edit-raw-col {
   transition: width 0.6s ease, padding 0.6s ease, border-right-width 0.6s ease, opacity 0.15s ease;
 }
 
 #app.edit-mode .pane.active .edit-raw-col {
-  width: 50%;
+  width: var(--editor-w);
   opacity: 1;
   overflow-y: auto; /* the base rule's overflow:hidden (needed to clip
     content while collapsed) would otherwise also block the textarea's own
@@ -603,7 +640,42 @@ html, body {
   pointer-events: auto;
   padding: 20px;
   border-right-width: 1px;
+}
+
+#app.edit-mode.editor-animating .pane.active .edit-raw-col {
   transition: width 0.6s ease, padding 0.6s ease, border-right-width 0.6s ease, opacity 0.45s ease-out 0.4s;
+}
+
+/* Fixed, non-resizable drag handle between the raw editor and the preview
+   -- separate from .edit-raw-col's own animated width above, this one only
+   ever changes from a real drag (see attachEditorResizer). Collapses to 0
+   right along with the editor column so it isn't left stranded against
+   the preview's edge while the editor's closed. */
+.editor-resizer {
+  width: 0;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: var(--editor-border);
+  position: relative;
+  transition: width 0.6s ease;
+}
+
+#app.edit-mode .pane.active .editor-resizer {
+  width: 5px;
+}
+
+.editor-resizer:hover, .editor-resizer.resizing {
+  background: var(--accent);
+}
+
+.editor-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+  z-index: 1;
 }
 
 .preview-col {
@@ -612,6 +684,21 @@ html, body {
   overflow-y: auto;
   padding: 28px 40px;
   position: relative; /* anchors .preview-stamp */
+  background: var(--bg-tab-active);
+  box-shadow: -10px 0 24px -8px rgba(0, 0, 0, 0);
+  transition: box-shadow 0.15s ease;
+}
+
+/* Reads as a raised card sitting above/in front of the "paper" editor
+   surface to its left -- only fully visible once that surface actually is
+   (same delay/duration as the editor's own text fade-in above, so the
+   shadow arrives in step with having something to cast it from, rather
+   than snapping in at the very start against an still-empty editor
+   column). Outside edit mode the preview spans the full pane with nothing
+   beside it, where this would just be a stray mark along its bare edge. */
+#app.edit-mode .pane.active .preview-col {
+  box-shadow: -10px 0 24px -8px rgba(0, 0, 0, 0.28);
+  transition: box-shadow 0.45s ease-out 0.4s;
 }
 
 .pane .markdown-body {
