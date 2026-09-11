@@ -456,7 +456,17 @@ function highlightInlineSpans(escapedLine) {
   // Code first, so **/__ characters that happen to appear inside an inline
   // code span aren't separately (and incorrectly) bolded afterward.
   let html = escapedLine.replace(/(`+)(.+?)\1/g, wrapWholeMatch("span", "md-code"));
-  html = html.replace(/(\*\*|__)(.+?)\1/g, wrapWholeMatch("strong"));
+  // (?<!\\) before EITHER delimiter: CommonMark lets \* and \_ escape a
+  // marker into a literal character (e.g. "\__init\__", a common way to
+  // write a Python dunder inline without wrapping it in code backticks) --
+  // without this, a delimiter immediately after a backslash still counted
+  // as "live" and got bolded anyway, backslash and all, exactly backwards
+  // from what escaping is supposed to do. Doesn't attempt full backslash-
+  // run counting (an even number of backslashes before a delimiter should
+  // actually leave it live) -- a rare enough case that the simple "one
+  // backslash right before it means escaped" rule covers what people
+  // actually type.
+  html = html.replace(/(?<!\\)(\*\*|__)(.+?)(?<!\\)\1/g, wrapWholeMatch("strong"));
   return html;
 }
 
