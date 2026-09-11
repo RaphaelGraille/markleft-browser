@@ -428,6 +428,34 @@ function renderTabbar() {
   });
 }
 
+// ---------- light source-syntax mirroring (backdrop) ----------
+//
+// NOT a markdown parser -- a lightweight, line-based regex pass over just
+// the handful of patterns worth a visual cue while still reading the raw
+// source: ATX headings (bold + a color step from the --h1..--h6 ramp) and
+// **bold**/__bold__ spans (bold only, no color change). Deliberately falls
+// well short of the real renderer (marked.js, in the worker) -- this
+// mirrors the source, it doesn't replace reading the rendered preview.
+// Line-based on purpose: a bold span that opens on one line and closes on
+// a later one won't be detected (each line is only checked against
+// itself), an accepted gap rather than tracking open/close state across
+// the whole document for a rare real-world pattern.
+
+function highlightMarkdownLine(line) {
+  // ATX heading: 1-6 #'s, then either a space+anything or nothing else on
+  // the line (CommonMark's own rule -- "#hello" with no space isn't one).
+  const headingMatch = line.match(/^(#{1,6})(\s.*)?$/);
+  let html = escapeHtml(line).replace(/(\*\*|__)(.+?)\1/g, "<strong>$2</strong>");
+  if (headingMatch) {
+    html = `<span class="md-h${headingMatch[1].length}">${html}</span>`;
+  }
+  return html;
+}
+
+function renderBackdropHtml(text) {
+  return text.split("\n").map(highlightMarkdownLine).join("\n");
+}
+
 // Every pane always contains BOTH the raw-source textarea (left) and the
 // rendered preview (right), regardless of whether edit mode is currently
 // on -- a CSS class on #app shows/hides the raw column, so toggling edit
@@ -438,11 +466,14 @@ function renderTabbar() {
 
 const LIVE_PREVIEW_DEBOUNCE_MS = 150;
 
-function attachEditListeners(rawCol, path) {
+function attachEditListeners(rawCol, backdrop, path) {
   let debounceTimer = null;
   rawCol.addEventListener("input", () => {
     const tab = findTab(path);
     if (!tab) return;
+    // Cheap (regex, not a real parse) -- unlike the rendered preview below,
+    // this runs synchronously on every keystroke, no debounce needed.
+    backdrop.innerHTML = renderBackdropHtml(rawCol.value);
     if (!tab.dirty) {
       tab.dirty = true;
       // Pinning only when the TOGGLE is switched on (see setEditMode)
@@ -474,6 +505,15 @@ function attachEditListeners(rawCol, path) {
     e.preventDefault();
     rawCol.setRangeText("\t", rawCol.selectionStart, rawCol.selectionEnd, "end");
     rawCol.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+
+  // 1:1, not proportional -- unlike the raw/preview sync below, these two
+  // layers must show the exact same lines at all times (the backdrop is
+  // painted directly behind the now-invisible textarea), or its styled
+  // text drifts out of alignment with where the real cursor actually is.
+  rawCol.addEventListener("scroll", () => {
+    backdrop.scrollTop = rawCol.scrollTop;
+    backdrop.scrollLeft = rawCol.scrollLeft;
   });
 }
 
@@ -589,11 +629,20 @@ async function renderPane(path) {
     pane.id = paneId(path);
     pane.className = "pane";
 
+    const editorWrapper = document.createElement("div");
+    editorWrapper.className = "editor-wrapper";
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "editor-backdrop";
+    editorWrapper.appendChild(backdrop);
+
     rawCol = document.createElement("textarea");
     rawCol.className = "edit-raw-col";
     rawCol.spellcheck = false;
-    attachEditListeners(rawCol, path);
-    pane.appendChild(rawCol);
+    attachEditListeners(rawCol, backdrop, path);
+    editorWrapper.appendChild(rawCol);
+
+    pane.appendChild(editorWrapper);
 
     const resizer = document.createElement("div");
     resizer.className = "editor-resizer";
@@ -628,7 +677,11 @@ async function renderPane(path) {
     const container = await renderMarkdownAsync(tab.rawText, path);
     if (findTab(path) !== tab) return; // superseded while we were awaiting the worker
     previewCol.appendChild(container);
-    if (!tab.dirty) rawCol.value = tab.rawText; // never clobber an in-progress edit
+    if (!tab.dirty) {
+      // never clobber an in-progress edit
+      rawCol.value = tab.rawText;
+      pane.querySelector(".editor-backdrop").innerHTML = renderBackdropHtml(tab.rawText);
+    }
   }
   if (path === activeTab) pane.classList.add("active");
   renderEmptyStateIfNeeded();

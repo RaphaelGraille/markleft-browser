@@ -24,6 +24,21 @@
      than comfortable for extended reading, the same reason quality book
      typesetting avoids pure black body text on white paper. */
   --editor-text: #333a42;
+  /* Heading hierarchy for the light source-editing mirror below: a single
+     6-step ramp from --accent (H1, most vivid -- most important) down to
+     --editor-text itself (H6, least important, receding into normal body
+     text) -- computed by interpolating hue/saturation/lightness between
+     the two endpoints, not picked by eye. Encodes importance as "distance
+     from neutral," the same principle typographic scales use lightness/
+     weight steps for instead of arbitrary hues -- keeps every heading
+     color a shade of the app's own single accent hue rather than
+     introducing a rainbow of unrelated colors. */
+  --h1: #0969da;
+  --h2: #1860b5;
+  --h3: #245793;
+  --h4: #2d4e74;
+  --h5: #324459;
+  --h6: #333a42;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -46,6 +61,14 @@
        matching how dark-mode code/prose editors commonly dim base text
        below full-white to keep long reading comfortable. */
     --editor-text: #c9d1d9;
+    /* Same ramp, computed the same way, between the dark-mode accent and
+       dark-mode --editor-text endpoints. */
+    --h1: #58a6ff;
+    --h2: #74b0f2;
+    --h3: #8db9e8;
+    --h4: #a3c1e1;
+    --h5: #b7c9dc;
+    --h6: #c9d1d9;
   }
 }
 
@@ -64,6 +87,13 @@
   font-family: "JetBrains Mono";
   src: url("/static/vendor/fonts/JetBrainsMono-Medium.woff2") format("woff2");
   font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/static/vendor/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+  font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
@@ -611,8 +641,20 @@ html, body {
    by setEditMode, removed ~900ms later -- see app.js), NOT applied
    unconditionally: width is also what a live resizer drag changes, and if
    the transition were always active, every drag update would lag behind
-   the mouse by up to 0.6s instead of tracking it in real time. */
-.edit-raw-col {
+   the mouse by up to 0.6s instead of tracking it in real time.
+
+   .editor-wrapper carries all of this sizing/animation -- .edit-raw-col
+   (the real, interactive textarea) and .editor-backdrop (a styled-HTML
+   mirror of the same text, sitting behind it) are both absolutely
+   positioned to exactly fill the wrapper's content box, one on top of the
+   other. This is what makes the light syntax highlighting below possible
+   without a real code-editor dependency: the textarea's own text is
+   rendered fully transparent (only its caret shows), so what you actually
+   SEE is the backdrop's styled HTML showing through -- typing, selection,
+   undo/redo, IME, and every other native textarea behavior is completely
+   unaffected, since the real editable surface never changed. */
+.editor-wrapper {
+  position: relative; /* positions .edit-raw-col/.editor-backdrop below */
   width: 0;
   min-width: 0; /* flex items default to min-width:auto (intrinsic content
     size), which would otherwise silently clamp an animated width above 0 */
@@ -629,33 +671,89 @@ html, body {
   padding: 0;
   border: none;
   border-right: 0 solid var(--editor-border);
-  outline: none;
-  resize: none;
-  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 13px;
-  line-height: 1.6;
   background: var(--editor-bg);
-  color: var(--editor-text);
 }
 
-#app.editor-animating .edit-raw-col {
+#app.editor-animating .editor-wrapper {
   transition: width 0.6s ease, padding 0.6s ease, border-right-width 0.6s ease, opacity 0.15s ease;
 }
 
-#app.edit-mode .pane.active .edit-raw-col {
+#app.edit-mode .pane.active .editor-wrapper {
   width: var(--editor-w);
   opacity: 1;
-  overflow-y: auto; /* the base rule's overflow:hidden (needed to clip
-    content while collapsed) would otherwise also block the textarea's own
-    scrolling once expanded -- with nothing for it to scroll internally,
-    wheel events bubble up and scroll the app around it instead */
   pointer-events: auto;
   padding: 20px;
   border-right-width: 1px;
 }
 
-#app.edit-mode.editor-animating .pane.active .edit-raw-col {
+#app.edit-mode.editor-animating .pane.active .editor-wrapper {
   transition: width 0.6s ease, padding 0.6s ease, border-right-width 0.6s ease, opacity 0.45s ease-out 0.4s;
+}
+
+/* Both fill the wrapper's content box exactly (inset:0 on an absolutely
+   positioned element is relative to the nearest positioned ancestor's
+   PADDING edge, so this automatically tracks the wrapper's own animated
+   padding above with no extra rule needed here). Font metrics must be
+   IDENTICAL between the two, or the invisible textarea's actual line
+   wrapping/cursor position drifts out of alignment with what the visible
+   backdrop shows. */
+.editor-backdrop, .edit-raw-col {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  box-sizing: border-box;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.editor-backdrop {
+  overflow: hidden; /* never scrolled directly -- synced 1:1 from the real textarea's own scroll */
+  pointer-events: none; /* clicks pass through to the textarea on top */
+  color: var(--editor-text);
+}
+
+.editor-backdrop strong {
+  font-weight: 700;
+}
+
+/* Heading hierarchy: a single hue (the app's own accent) stepped from
+   vivid (H1) toward the editor's own body-text color (H6) -- see the --h1
+   .. --h6 custom properties for the reasoning. Bold on every level,
+   matching how the real rendered preview always bolds headings; NOT
+   larger, a deliberate v1 scope choice (a taller line would need to
+   either break alignment with the invisible textarea below or a much more
+   involved per-line layout to avoid it). */
+.md-h1 { color: var(--h1); font-weight: 700; }
+.md-h2 { color: var(--h2); font-weight: 700; }
+.md-h3 { color: var(--h3); font-weight: 700; }
+.md-h4 { color: var(--h4); font-weight: 700; }
+.md-h5 { color: var(--h5); font-weight: 700; }
+.md-h6 { color: var(--h6); font-weight: 700; }
+
+.edit-raw-col {
+  z-index: 1; /* above the backdrop */
+  resize: none;
+  background: transparent;
+  color: transparent; /* the backdrop behind is what's actually seen */
+  caret-color: var(--editor-text); /* the cursor itself must stay visible */
+}
+
+#app.edit-mode .pane.active .edit-raw-col {
+  overflow-y: auto; /* the base rule's overflow:hidden (needed to clip
+    content while collapsed) would otherwise also block the textarea's own
+    scrolling once expanded -- with nothing for it to scroll internally,
+    wheel events bubble up and scroll the app around it instead. The
+    backdrop stays overflow:hidden always -- it's never scrolled by user
+    interaction (pointer-events:none), only programmatically via its own
+    scrollTop, which overflow:hidden doesn't prevent -- so it never shows
+    its own (phantom, non-interactive) scrollbar alongside the real one. */
 }
 
 /* Fixed, non-resizable drag handle between the raw editor and the preview

@@ -64,7 +64,12 @@ a browser tab.
   "paper" background (distinct from pure white/the app's own surface) and
   a vendored monospace font (JetBrains Mono); the preview sits visually
   above it with a drop shadow; and the divider between the two is
-  draggable, independent of the sidebar's own resizer.
+  draggable, independent of the sidebar's own resizer. The raw source
+  itself gets a light, as-you-type mirror of the rendering — `#`/`##`/`###`
+  headings are bold with a color that steps from the app's own accent hue
+  (H1) down toward the editor's own text color (H6, the least prominent),
+  and `**bold**`/`__bold__` spans render bold — without a full syntax
+  highlighter or code-editor dependency.
 
 ### Keyboard shortcuts
 
