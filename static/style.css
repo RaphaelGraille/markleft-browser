@@ -18,6 +18,12 @@
      so it reads as part of the same palette rather than a clashing hue. */
   --editor-bg: #f2f4f7;
   --editor-border: #d8dee5;
+  /* Same cool hue family as --text, deliberately softer/lighter -- near-
+     black reads fine for short UI labels, but a large continuous block of
+     plain (non-syntax-highlighted) prose at that same contrast is harsher
+     than comfortable for extended reading, the same reason quality book
+     typesetting avoids pure black body text on white paper. */
+  --editor-text: #333a42;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -36,6 +42,10 @@
        same cool blue-gray hue family, not a warm brown/olive. */
     --editor-bg: #242a33;
     --editor-border: #3c434c;
+    /* Same reasoning in reverse: softer than the brightest --text white,
+       matching how dark-mode code/prose editors commonly dim base text
+       below full-white to keep long reading comfortable. */
+    --editor-text: #c9d1d9;
   }
 }
 
@@ -625,7 +635,7 @@ html, body {
   font-size: 13px;
   line-height: 1.6;
   background: var(--editor-bg);
-  color: var(--text);
+  color: var(--editor-text);
 }
 
 #app.editor-animating .edit-raw-col {
