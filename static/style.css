@@ -12,10 +12,12 @@
   --accent: #0969da;
   --accent-soft: rgba(9, 105, 218, 0.12);
   --danger: #cf222e;
-  /* A warm off-white, not pure white, so the raw-source editor reads as
-     its own distinct "paper" surface rather than just more app chrome. */
-  --editor-bg: #faf7f0;
-  --editor-border: #ded6c4;
+  /* Same cool blue-gray hue family as --bg-sidebar/--bg-tab/--border above
+     (not a warm cream) -- the "distinct paper surface" cue comes purely
+     from a lightness step, sitting between --bg-tab and --bg-tab-active,
+     so it reads as part of the same palette rather than a clashing hue. */
+  --editor-bg: #f2f4f7;
+  --editor-border: #d8dee5;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,10 +32,10 @@
     --text-faint: #6e7681;
     --accent: #58a6ff;
     --accent-soft: rgba(88, 166, 255, 0.16);
-    /* A warm dark gray, distinct from the cooler blue-black used
-       everywhere else, for the same "this is a different surface" cue. */
-    --editor-bg: #26241f;
-    --editor-border: #453f30;
+    /* Same treatment in reverse: a touch lighter than --bg-tab-active,
+       same cool blue-gray hue family, not a warm brown/olive. */
+    --editor-bg: #242a33;
+    --editor-border: #3c434c;
   }
 }
 
