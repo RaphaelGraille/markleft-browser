@@ -68,8 +68,11 @@ a browser tab.
   itself gets a light, as-you-type mirror of the rendering — `#`/`##`/`###`
   headings are bold with a color that steps from the app's own accent hue
   (H1) down toward the editor's own text color (H6, the least prominent),
-  and `**bold**`/`__bold__` spans render bold — without a full syntax
-  highlighter or code-editor dependency.
+  `**bold**`/`__bold__` spans render bold, and `*italic*`/`_italic_` spans
+  render italic — without a full syntax highlighter or code-editor
+  dependency. A backslash escape (`\*`, `\_`) keeps its delimiter literal
+  instead of triggering emphasis. Entering edit mode moves keyboard focus
+  straight into the editor, ready to type immediately.
 
 ### Keyboard shortcuts
 

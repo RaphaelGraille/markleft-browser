@@ -452,22 +452,73 @@ function wrapWholeMatch(tag, className) {
   return (match) => `<${tag}${className ? ` class="${className}"` : ""}>${match}</${tag}>`;
 }
 
+// Placeholders for backslash-escaped delimiter RUNS, swapped in before any
+// delimiter matching and back out afterward -- see the long comment in
+// highlightInlineSpans for why a lookbehind check DURING matching isn't
+// enough on its own. One sentinel token per escaped form (**, __, *, _) so
+// each restores to its own exact original text.
+// Letters/digits only -- deliberately none of *, _, or ` in the token
+// itself, or the placeholder would get re-matched as a delimiter by the
+// very regexes it's meant to hide the escaped text from (an earlier draft
+// used "__P1__"-style tokens, whose own "__" got wrapped in <strong> by
+// the bold/italic pass one line below).
+const ESCAPE_PLACEHOLDERS = {
+  "**": "ESCTOKENSTARSTARESCTOKEN",
+  "__": "ESCTOKENUSCOREUSCOREESCTOKEN",
+  "*": "ESCTOKENSTARESCTOKEN",
+  "_": "ESCTOKENUSCOREESCTOKEN",
+};
+const PLACEHOLDER_TO_ESCAPE = Object.fromEntries(
+  Object.entries(ESCAPE_PLACEHOLDERS).map(([delim, placeholder]) => [placeholder, `\\${delim}`])
+);
+// Longest-first so a shorter token that happened to prefix a longer one
+// couldn't steal a partial match (the four tokens above don't actually
+// share a prefix, but the ordering costs nothing and removes the need to
+// re-verify that fact by hand if a token is ever renamed).
+const RESTORE_ESCAPES_RE = new RegExp(
+  Object.keys(PLACEHOLDER_TO_ESCAPE)
+    .sort((a, b) => b.length - a.length)
+    .join("|"),
+  "g"
+);
+
 function highlightInlineSpans(escapedLine) {
+  // Neutralize backslash-escaped delimiters BEFORE any delimiter matching
+  // runs at all, rather than trying to reject them WHILE matching with a
+  // lookbehind. A lookbehind alone stops one interpretation of an escaped
+  // run from matching, but the regex engine can still slide forward and
+  // find a DIFFERENT (shorter) delimiter reading that reuses one of the
+  // "escaped" characters. Matching the delimiter greedily (** / __ before
+  // */_) right after the backslash also matters on its own: "\__init\__"
+  // means the WHOLE "__" run after each backslash is escaped, not just
+  // its first underscore -- escaping only one of the two would leave a
+  // lone live "_" behind on each side of "init", which the emphasis regex
+  // below would then happily pair up across the escaped run. Swapping the
+  // whole escaped run out for one placeholder char per variant removes it
+  // from consideration entirely; each is swapped back to its exact
+  // original backslash + delimiter text once matching is done.
+  let html = escapedLine.replace(
+    /\\(\*\*|__|\*|_)/g,
+    (_, delim) => ESCAPE_PLACEHOLDERS[delim]
+  );
+
   // Code first, so **/__ characters that happen to appear inside an inline
   // code span aren't separately (and incorrectly) bolded afterward.
-  let html = escapedLine.replace(/(`+)(.+?)\1/g, wrapWholeMatch("span", "md-code"));
-  // (?<!\\) before EITHER delimiter: CommonMark lets \* and \_ escape a
-  // marker into a literal character (e.g. "\__init\__", a common way to
-  // write a Python dunder inline without wrapping it in code backticks) --
-  // without this, a delimiter immediately after a backslash still counted
-  // as "live" and got bolded anyway, backslash and all, exactly backwards
-  // from what escaping is supposed to do. Doesn't attempt full backslash-
-  // run counting (an even number of backslashes before a delimiter should
-  // actually leave it live) -- a rare enough case that the simple "one
-  // backslash right before it means escaped" rule covers what people
-  // actually type.
-  html = html.replace(/(?<!\\)(\*\*|__)(.+?)(?<!\\)\1/g, wrapWholeMatch("strong"));
-  return html;
+  html = html.replace(/(`+)(.+?)\1/g, wrapWholeMatch("span", "md-code"));
+  // Bold (**/__) and italic (*/_) in ONE combined pass, not two separate
+  // ones -- a single "*" is a substring of "**", so a separate later
+  // italic pass scanning the bold pass's own output would misfire on the
+  // leftover ** characters (which are still visibly present, per the
+  // alignment rule above). Listing the 2-character delimiters first in
+  // the alternation makes the regex engine try them before the 1-character
+  // ones at every position, so a real "**bold**" is always consumed whole
+  // by the bold branch rather than the italic branch grabbing one of its
+  // two asterisks.
+  html = html.replace(/(\*\*|__|\*|_)(.+?)\1/g, (match, delim) =>
+    delim.length === 2 ? `<strong>${match}</strong>` : `<em>${match}</em>`
+  );
+
+  return html.replace(RESTORE_ESCAPES_RE, (placeholder) => PLACEHOLDER_TO_ESCAPE[placeholder]);
 }
 
 function highlightMarkdownLine(line) {
@@ -1490,7 +1541,18 @@ function setEditMode(on) {
   // silently replaced the moment you click the next file in the tree would
   // otherwise discard whatever you just typed. pinTab is already a no-op on
   // an already-permanent tab.
-  if (on && activeTab) pinTab(activeTab);
+  if (on && activeTab) {
+    pinTab(activeTab);
+    // Focus follows into the editor -- otherwise the toggle button itself
+    // keeps focus (it's the thing you just clicked) and you'd need a
+    // second, separate click into the text before typing does anything.
+    // Safe to call immediately, even mid-reveal-animation: the textarea's
+    // pointer-events/focusability apply from the first frame of the CSS
+    // transition, not only once it finishes -- only the visual reveal is
+    // still in progress.
+    const rawCol = document.querySelector(".pane.active .edit-raw-col");
+    if (rawCol) rawCol.focus();
+  }
 }
 
 editToggleBtn.addEventListener("click", () => setEditMode(!editModeOn));

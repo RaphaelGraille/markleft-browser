@@ -729,6 +729,10 @@ html, body {
   font-weight: 700;
 }
 
+.editor-backdrop em {
+  font-style: italic;
+}
+
 /* Inline `code` spans and fenced ``` blocks alike -- a subtle background
    chip, matching the general convention the rendered preview's own
    github-markdown.css already uses for code. Deliberately NOT
