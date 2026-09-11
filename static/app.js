@@ -441,11 +441,30 @@ function renderTabbar() {
 // itself), an accepted gap rather than tracking open/close state across
 // the whole document for a rare real-world pattern.
 
+// Wraps the FULL match (delimiters included, e.g. "**bold**" as a whole,
+// not just "bold") in a styling element -- critical, not cosmetic: the
+// backdrop must show exactly the same characters as the real (invisible)
+// textarea behind it, in the same order, or everything after a styled
+// span drifts out of alignment with where the real cursor actually is. An
+// earlier version output only the inner captured group, silently dropping
+// the delimiter characters from what was visually shown -- exactly that bug.
+function wrapWholeMatch(tag, className) {
+  return (match) => `<${tag}${className ? ` class="${className}"` : ""}>${match}</${tag}>`;
+}
+
+function highlightInlineSpans(escapedLine) {
+  // Code first, so **/__ characters that happen to appear inside an inline
+  // code span aren't separately (and incorrectly) bolded afterward.
+  let html = escapedLine.replace(/(`+)(.+?)\1/g, wrapWholeMatch("span", "md-code"));
+  html = html.replace(/(\*\*|__)(.+?)\1/g, wrapWholeMatch("strong"));
+  return html;
+}
+
 function highlightMarkdownLine(line) {
   // ATX heading: 1-6 #'s, then either a space+anything or nothing else on
   // the line (CommonMark's own rule -- "#hello" with no space isn't one).
   const headingMatch = line.match(/^(#{1,6})(\s.*)?$/);
-  let html = escapeHtml(line).replace(/(\*\*|__)(.+?)\1/g, "<strong>$2</strong>");
+  let html = highlightInlineSpans(escapeHtml(line));
   if (headingMatch) {
     html = `<span class="md-h${headingMatch[1].length}">${html}</span>`;
   }
@@ -453,7 +472,26 @@ function highlightMarkdownLine(line) {
 }
 
 function renderBackdropHtml(text) {
-  return text.split("\n").map(highlightMarkdownLine).join("\n");
+  // Fenced code blocks are the one place this needs to track state ACROSS
+  // lines (is this line inside a ``` or ~~~ fence) rather than judging
+  // each line in isolation like everything else here -- fence content is
+  // styled as code (not run through heading/bold matching at all, mirroring
+  // how the real renderer also treats it as literal, unparsed text) and the
+  // fence marker lines themselves are included in that styling too.
+  let inFence = false;
+  return text
+    .split("\n")
+    .map((line) => {
+      const isFenceMarker = /^(```|~~~)/.test(line);
+      if (isFenceMarker) {
+        const html = `<span class="md-code-line">${escapeHtml(line)}</span>`;
+        inFence = !inFence;
+        return html;
+      }
+      if (inFence) return `<span class="md-code-line">${escapeHtml(line)}</span>`;
+      return highlightMarkdownLine(line);
+    })
+    .join("\n");
 }
 
 // Every pane always contains BOTH the raw-source textarea (left) and the

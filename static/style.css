@@ -39,6 +39,12 @@
   --h4: #2d4e74;
   --h5: #324459;
   --h6: #333a42;
+  /* A semi-transparent version of --text-muted's own hue, not a new color
+     -- reused (not reinvented) specifically because a semi-transparent
+     NEUTRAL overlay adapts correctly to both the light and dark editor
+     background on its own (reads as a subtle darkening on light, a subtle
+     lightening on dark), with no separate dark-mode value needed. */
+  --editor-code-bg: rgba(110, 119, 129, 0.16);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -721,6 +727,22 @@ html, body {
 
 .editor-backdrop strong {
   font-weight: 700;
+}
+
+/* Inline `code` spans and fenced ``` blocks alike -- a subtle background
+   chip, matching the general convention the rendered preview's own
+   github-markdown.css already uses for code. Deliberately NOT
+   display:block (which would look more like a seamless full-width block
+   background): white-space:pre-wrap on the backdrop means its line breaks
+   come entirely from the raw text's own literal newline characters, and a
+   block-level span would add an extra layout box alongside that literal
+   break, silently doubling the vertical space inside every fenced block.
+   An inline background only covering the actual text glyphs is the
+   trade-off that keeps line positions guaranteed identical to the
+   invisible textarea underneath. */
+.md-code, .md-code-line {
+  background: var(--editor-code-bg);
+  border-radius: 3px;
 }
 
 /* Heading hierarchy: a single hue (the app's own accent) stepped from
