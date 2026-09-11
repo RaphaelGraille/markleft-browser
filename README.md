@@ -86,7 +86,12 @@ particular is sometimes reserved by the OS itself for window snapping):
 | `Cmd+W` | Close the active tab |
 | `Cmd+B` | Show/hide the sidebar |
 | `Cmd+S` | Save the active tab's edits |
-| `Cmd+←` / `Cmd+→` | Switch to the previous / next tab |
+| `Cmd+E` | Toggle edit mode |
+| `Shift+Cmd+←` / `Shift+Cmd+→` | Switch to the previous / next tab |
+
+(Tab-switching uses Shift held down specifically so plain `Cmd+←`/`Cmd+→`
+stay free for their normal meaning — move to the start/end of the current
+line — while editing.)
 
 ## Installation
 

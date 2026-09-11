@@ -1386,7 +1386,7 @@ window.addEventListener("beforeunload", (e) => {
 
 // ---------- desktop-only keyboard shortcuts ----------
 //
-// Cmd+N/W/B/S/Left/Right only, gated on treeData.isDesktop (set once the
+// Cmd+N/W/B/S/E/Left/Right only, gated on treeData.isDesktop (set once the
 // first /api/tree response arrives). Deliberately never bound in a plain
 // browser tab: Cmd+W and Cmd+S especially are reserved by every real
 // browser (closing the tab; "Save Page As…") and aren't something a page
@@ -1395,6 +1395,14 @@ window.addEventListener("beforeunload", (e) => {
 // window there's no browser chrome to conflict with, so these are safe to
 // own outright. The floating save button is the universal path (browser
 // tab or desktop app) either way.
+//
+// Tab-switching is Shift+Cmd+Left/Right, not plain Cmd+Left/Right: both
+// combos are real native text-field shortcuts (move / extend selection to
+// the start or end of the line), and this listener sits on `document`, so
+// it would otherwise fire and preventDefault() before the raw editor's own
+// native handling ever got a chance -- regardless of which combo owns tab
+// switching, whichever one does must still be skipped while the raw editor
+// has focus, or it breaks exactly the same way.
 
 function activateAdjacentTab(direction) {
   if (tabsOrder.length === 0) return;
@@ -1405,12 +1413,13 @@ function activateAdjacentTab(direction) {
 
 document.addEventListener("keydown", (e) => {
   if (!treeData || !treeData.isDesktop || !e.metaKey) return;
-  if (e.key === "ArrowLeft") {
+  const inRawEditor = document.activeElement && document.activeElement.classList.contains("edit-raw-col");
+  if (e.key === "ArrowLeft" && e.shiftKey && !inRawEditor) {
     e.preventDefault();
     activateAdjacentTab(-1);
     return;
   }
-  if (e.key === "ArrowRight") {
+  if (e.key === "ArrowRight" && e.shiftKey && !inRawEditor) {
     e.preventDefault();
     activateAdjacentTab(1);
     return;
@@ -1428,6 +1437,9 @@ document.addEventListener("keydown", (e) => {
   } else if (key === "s") {
     e.preventDefault();
     if (activeTab) saveTab(activeTab);
+  } else if (key === "e") {
+    e.preventDefault();
+    setEditMode(!editModeOn);
   }
 });
 
