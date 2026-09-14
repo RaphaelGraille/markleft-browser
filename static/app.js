@@ -482,7 +482,33 @@ const RESTORE_ESCAPES_RE = new RegExp(
   "g"
 );
 
+// Wraps a per-line code-span index (e.g. "CODESPANTOKEN0CODESPANTOKEN") --
+// same letters/digits-only reasoning as the escape placeholders above, so
+// the stashed index can never itself be mistaken for a delimiter.
+const CODE_SPAN_TOKEN_PREFIX = "CODESPANTOKEN";
+
 function highlightInlineSpans(escapedLine) {
+  // Extract code spans FIRST, stashing each one's already-finished HTML
+  // behind a placeholder token instead of leaving its wrapping <span> in
+  // place inline. CommonMark gives code spans top inline precedence --
+  // their content is verbatim, immune to both escaping and emphasis --
+  // but merely WRAPPING a span in HTML tags (the previous approach) never
+  // actually achieves that: the raw delimiter characters are still sitting
+  // in the string, in plain sight of every regex that runs afterward. A
+  // lone "_" or "*" living inside a code span's own content (extremely
+  // common in real code -- `foo_bar`, `a * b`) could then pair with a REAL
+  // delimiter elsewhere on the line, straddling the code span's tags and
+  // producing crossed/garbled HTML on both sides of it. Replacing the
+  // whole span with an opaque placeholder removes it from the string
+  // entirely for every later pass; it's swapped back in, fully formed and
+  // untouched, only once all other matching is done.
+  const codeSpanStash = [];
+  let html = escapedLine.replace(/(`+)(.+?)\1/g, (match) => {
+    const token = `${CODE_SPAN_TOKEN_PREFIX}${codeSpanStash.length}${CODE_SPAN_TOKEN_PREFIX}`;
+    codeSpanStash.push(wrapWholeMatch("span", "md-code")(match));
+    return token;
+  });
+
   // Neutralize backslash-escaped delimiters BEFORE any delimiter matching
   // runs at all, rather than trying to reject them WHILE matching with a
   // lookbehind. A lookbehind alone stops one interpretation of an escaped
@@ -497,14 +523,11 @@ function highlightInlineSpans(escapedLine) {
   // whole escaped run out for one placeholder char per variant removes it
   // from consideration entirely; each is swapped back to its exact
   // original backslash + delimiter text once matching is done.
-  let html = escapedLine.replace(
+  html = html.replace(
     /\\(\*\*|__|\*|_)/g,
     (_, delim) => ESCAPE_PLACEHOLDERS[delim]
   );
 
-  // Code first, so **/__ characters that happen to appear inside an inline
-  // code span aren't separately (and incorrectly) bolded afterward.
-  html = html.replace(/(`+)(.+?)\1/g, wrapWholeMatch("span", "md-code"));
   // Bold (**/__) and italic (*/_) in ONE combined pass, not two separate
   // ones -- a single "*" is a substring of "**", so a separate later
   // italic pass scanning the bold pass's own output would misfire on the
@@ -518,7 +541,11 @@ function highlightInlineSpans(escapedLine) {
     delim.length === 2 ? `<strong>${match}</strong>` : `<em>${match}</em>`
   );
 
-  return html.replace(RESTORE_ESCAPES_RE, (placeholder) => PLACEHOLDER_TO_ESCAPE[placeholder]);
+  html = html.replace(RESTORE_ESCAPES_RE, (placeholder) => PLACEHOLDER_TO_ESCAPE[placeholder]);
+  return html.replace(
+    new RegExp(`${CODE_SPAN_TOKEN_PREFIX}(\\d+)${CODE_SPAN_TOKEN_PREFIX}`, "g"),
+    (_, i) => codeSpanStash[Number(i)]
+  );
 }
 
 function highlightMarkdownLine(line) {
