@@ -567,7 +567,7 @@ function renderBackdropHtml(text) {
   // how the real renderer also treats it as literal, unparsed text) and the
   // fence marker lines themselves are included in that styling too.
   let inFence = false;
-  return text
+  const html = text
     .split("\n")
     .map((line) => {
       const isFenceMarker = /^(```|~~~)/.test(line);
@@ -580,6 +580,28 @@ function renderBackdropHtml(text) {
       return highlightMarkdownLine(line);
     })
     .join("\n");
+
+  // A trailing "\n" in a real file's raw text (the near-universal norm --
+  // virtually every saved text file ends with one) is where a <textarea>
+  // and this plain <div> permanently disagree: the textarea's .value
+  // model treats a trailing newline as a genuine extra (empty) row --
+  // exactly like pressing Enter at the end always visually opens a new
+  // line -- while a white-space:pre-wrap block silently swallows a
+  // trailing newline and never grows to show it. Confirmed directly:
+  // identical text and CSS, "a\nb\n" measures 2 lines in a div but 3 lines
+  // in a textarea. Textarea vs backdrop is what has to be scroll-synced
+  // (see attachEditListeners' 1:1 sync), so a one-line height DEFICIT here
+  // isn't cosmetic -- once the document is long enough to actually
+  // scroll, the backdrop is packing the same content into one line less
+  // of total scroll range than the invisible textarea, so a given
+  // scrollTop shows visually different text between them, and the real
+  // (invisible) cursor drifts away from what's visually shown underneath
+  // it as you scroll deeper -- exactly the "cursor lands on the wrong
+  // line" symptom this fixes. A trailing <br> forces the one matching
+  // extra line WITHOUT adding a character: <br> contributes nothing to
+  // .textContent, so the alignment guarantee (backdrop.textContent === the
+  // textarea's raw value, checked throughout this file) is untouched.
+  return text.endsWith("\n") ? `${html}<br>` : html;
 }
 
 // Every pane always contains BOTH the raw-source textarea (left) and the
