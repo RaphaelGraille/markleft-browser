@@ -668,24 +668,29 @@ function attachEditListeners(rawCol, backdrop, path) {
 // Proportional scroll sync: scrollTop% on one side maps to the same % on
 // the other. Simple and cheap, at the cost of precision on documents with
 // very unevenly-sized sections (e.g. one huge code block skews the rest) --
-const EDITOR_WIDTH_KEY = "mdviewer:editorWidth";
+const EDITOR_WIDTH_KEY = "mdviewer:editorWidthRatio";
 const EDITOR_MIN_WIDTH = 240;
 const EDITOR_PREVIEW_MIN_WIDTH = 240; // leave the preview at least this much room
+const EDITOR_DEFAULT_RATIO = 0.4;
 
-function applyEditorWidth(px) {
-  // A loose, window-relative safety net -- not the precise pane-width
-  // clamp the drag handler below applies (it always fires first and is
-  // tighter, since the pane itself is narrower than the window), but this
-  // still matters for the boot-time/persisted-value path, where no live
-  // pane rect exists yet to clamp against precisely.
-  const maxWidth = window.innerWidth * 0.7;
-  document.documentElement.style.setProperty("--editor-w", `${Math.max(0, Math.min(px, maxWidth))}px`);
+// Stored and applied as a RATIO of the pane's width (rendered as a CSS %),
+// not a fixed px -- a fixed px is what used to leave the editor stuck at
+// the same width while only the (flex:1) preview absorbed a window resize
+// or a sidebar collapse/expand, instead of both sides scaling together in
+// proportion. A % width on a flex item is relative to the flex container
+// and recomputes automatically on any resize of it, so this alone makes
+// both requirements free -- no resize/sidebar-toggle listener needed here
+// at all. The hard floors (EDITOR_MIN_WIDTH / EDITOR_PREVIEW_MIN_WIDTH)
+// are enforced declaratively too, via min-width on .editor-wrapper's
+// active-state rule and on .preview-col in style.css.
+function applyEditorRatio(ratio) {
+  document.documentElement.style.setProperty("--editor-w", `${Math.max(0, Math.min(ratio, 1)) * 100}%`);
 }
 
 // Global, like sidebar width -- one persisted split, not one per tab, so
 // resizing while editing one file carries over to the next.
-const savedEditorWidth = localStorage.getItem(EDITOR_WIDTH_KEY);
-if (savedEditorWidth) applyEditorWidth(parseFloat(savedEditorWidth));
+const savedEditorRatio = localStorage.getItem(EDITOR_WIDTH_KEY);
+applyEditorRatio(savedEditorRatio ? parseFloat(savedEditorRatio) : EDITOR_DEFAULT_RATIO);
 
 // Each pane gets its own resizer element (built once, in renderPane, right
 // alongside its own raw/preview columns), but they all drag the same
@@ -699,11 +704,15 @@ function attachEditorResizer(resizerEl, pane) {
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
 
+    let latestRatio = null;
+
     function onMouseMove(ev) {
       const paneRect = pane.getBoundingClientRect();
       const maxWidth = paneRect.width - EDITOR_PREVIEW_MIN_WIDTH;
       const raw = ev.clientX - paneRect.left;
-      applyEditorWidth(Math.max(EDITOR_MIN_WIDTH, Math.min(raw, maxWidth)));
+      const clampedPx = Math.max(EDITOR_MIN_WIDTH, Math.min(raw, maxWidth));
+      latestRatio = clampedPx / paneRect.width;
+      applyEditorRatio(latestRatio);
     }
     function onMouseUp() {
       document.removeEventListener("mousemove", onMouseMove);
@@ -711,8 +720,7 @@ function attachEditorResizer(resizerEl, pane) {
       resizerEl.classList.remove("resizing");
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      const finalWidth = getComputedStyle(document.documentElement).getPropertyValue("--editor-w");
-      localStorage.setItem(EDITOR_WIDTH_KEY, parseFloat(finalWidth));
+      if (latestRatio !== null) localStorage.setItem(EDITOR_WIDTH_KEY, latestRatio);
     }
 
     document.addEventListener("mousemove", onMouseMove);

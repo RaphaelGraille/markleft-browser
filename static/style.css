@@ -1,6 +1,11 @@
 :root {
   --sidebar-w: 300px;
-  --editor-w: 480px;
+  --editor-w: 40%; /* a % of the pane, not a fixed px, so the editor/preview
+    split scales together as the pane itself resizes (window resize, sidebar
+    collapse/expand) instead of the editor staying a fixed width while only
+    the (flex:1) preview absorbs the change -- see EDITOR_MIN_WIDTH /
+    EDITOR_PREVIEW_MIN_WIDTH in app.js and the min-width floors below for
+    what keeps either side from being squeezed to nothing. */
   --border: #d0d7de;
   --bg-sidebar: #f6f8fa;
   --bg-tab: #eaeef2;
@@ -692,6 +697,21 @@ html, body {
   border-right-width: 1px;
 }
 
+/* The min-width floor (matches EDITOR_MIN_WIDTH in app.js) is scoped to
+   OUTSIDE the reveal/hide transition, not on the rule above -- min-width
+   isn't itself an animatable transitioned property, so applying it
+   unconditionally would clamp the rendered box to 240px from the very
+   first frame of the reveal, before the animating width value has even
+   grown that far itself: the panel would visibly SNAP to 240px instantly,
+   then continue growing smoothly from there, instead of growing smoothly
+   from 0 the whole way. Excluding :editor-animating keeps the reveal/hide
+   transition exactly as smooth as before; the floor still fully applies
+   once settled, and during a live resizer drag (which never carries the
+   editor-animating class, by design -- see attachEditorResizer/setEditMode). */
+#app.edit-mode:not(.editor-animating) .pane.active .editor-wrapper {
+  min-width: 240px;
+}
+
 #app.edit-mode.editor-animating .pane.active .editor-wrapper {
   transition: width 0.6s ease, padding 0.6s ease, border-right-width 0.6s ease, opacity 0.45s ease-out 0.4s;
 }
@@ -816,7 +836,9 @@ html, body {
 
 .preview-col {
   flex: 1;
-  min-width: 0;
+  min-width: 240px; /* matches EDITOR_PREVIEW_MIN_WIDTH in app.js -- keeps
+    the preview from being squeezed away to nothing as the editor's
+    percentage width above grows on a narrow window */
   overflow-y: auto;
   padding: 28px 40px;
   position: relative; /* anchors .preview-stamp */
@@ -908,12 +930,22 @@ html, body {
   background: var(--bg-tab-active);
   color: var(--text-muted);
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  /* A layered shadow (a soft, wide outer one plus a tighter, darker one
+     close to the edge) reads as a raised button floating above the panel
+     -- a single small shadow (the previous 0 1px 4px) sits too close to
+     the surface to feel detached from it. Transitions alongside the
+     existing color/border-color hover so all three animate in step. */
+  box-shadow: 0 10px 24px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.14);
+  transition: box-shadow 0.15s ease, transform 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 #edit-toggle-btn:hover, #save-btn:hover {
   color: var(--accent);
   border-color: var(--accent);
+  /* Lifts further still on hover, reinforcing that it's a floating
+     control you can press, not part of the flat panel underneath. */
+  box-shadow: 0 14px 32px rgba(0,0,0,0.22), 0 3px 10px rgba(0,0,0,0.16);
+  transform: translateY(-1px);
 }
 
 /* Solid fill, not a translucent tint -- a toggled-on state should read as
@@ -934,7 +966,8 @@ html, body {
   opacity: 0;
   overflow: hidden;
   pointer-events: none;
-  transition: width 0.15s ease, opacity 0.15s ease, border-width 0.15s ease;
+  transition: width 0.15s ease, opacity 0.15s ease, border-width 0.15s ease,
+    box-shadow 0.15s ease, transform 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
 #app.edit-mode #save-btn {
